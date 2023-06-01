@@ -45,6 +45,29 @@ def get_windowed(x, hop, win, win_fn=hann_window):
         S[:, j] = xj
     return S
 
+
+def do_windowed_sum(WSound, H, win, hop):
+    """
+    The inverse of the get_windowed method
+
+    Parameters
+    ----------
+    WSound: ndarray(win_length, K) 
+        An win x K matrix of template sounds in some time order along the second axis
+    H: ndarray(K, N)
+        Activations matrix
+    win: int
+        Window length
+    hop: int
+        Hop length
+    """
+    yh = WSound.dot(H)
+    y = np.zeros(yh.shape[1]*hop+win)
+    for j in range(yh.shape[1]):
+        y[j*hop:j*hop+win] += yh[:, j]
+    return y
+
+
 def diagonally_enhance_H(H, c):
     """
     Diagonally enhance an activation matrix in place
@@ -68,7 +91,7 @@ def diagonally_enhance_H(H, c):
         else:
             di -= 1
 
-def create_musaic(V, WSound, WAbs, win, hop, L, r=3, p=10, c=3):
+def get_musaic_activations(V, WAbs, win, hop, L, r=3, p=10, c=3):
     """
     Implement the technique from "Let It Bee-Towards NMF-Inspired
     Audio Mosaicing"
@@ -77,8 +100,6 @@ def create_musaic(V, WSound, WAbs, win, hop, L, r=3, p=10, c=3):
     ----------
     V: ndarray(M, N)
         A M x N nonnegative target matrix
-    WSound: ndarray(win_length, K) 
-        An win x K matrix of template sounds in some time order along the second axis
     WAbs: ndarray(M, K)
         STFT magnitudes corresponding to WSound
     win: int
@@ -94,6 +115,11 @@ def create_musaic(V, WSound, WAbs, win, hop, L, r=3, p=10, c=3):
         un-shrunken
     c: int
         Half length of time-continuous activation filter
+    
+    Returns
+    -------
+    H: ndarray(K, N)
+        Activations matrix
     """
     N = V.shape[1]
     K = WAbs.shape[1]
@@ -123,9 +149,11 @@ def create_musaic(V, WSound, WAbs, win, hop, L, r=3, p=10, c=3):
         VLam = VAbs/WH
         H = H*((WAbs.T).dot(VLam)/WDenom[:, None])
     
-    # Instead of Griffin-Lim, use the original windowed sounds
-    yh = WSound.dot(H)
-    y = np.zeros(yh.shape[1]*hop+win)
-    for j in range(yh.shape[1]):
-        y[j*hop:j*hop+win] += yh[:, j]
-    return y
+    return H
+
+
+
+def create_musaic_sliding(V, WSound, WAbs, win, hop, slidewin, L, r=3, p=10, c=3):
+    nwin = V.shape[1]-slidewin+1
+    for j in range(nwin):
+        pass
