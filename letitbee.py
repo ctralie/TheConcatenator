@@ -48,7 +48,7 @@ def get_windowed(x, hop, win, win_fn=hann_window):
 
 def do_windowed_sum(WSound, H, win, hop):
     """
-    The inverse of the get_windowed method
+    The inverse of the get_windowed method on a product W*H
 
     Parameters
     ----------
@@ -91,7 +91,7 @@ def diagonally_enhance_H(H, c):
         else:
             di -= 1
 
-def get_musaic_activations(V, WAbs, win, hop, L, r=3, p=10, c=3):
+def get_musaic_activations(V, WAbs, L, r=3, p=10, c=3, verbose=False):
     """
     Implement the technique from "Let It Bee-Towards NMF-Inspired
     Audio Mosaicing"
@@ -102,10 +102,6 @@ def get_musaic_activations(V, WAbs, win, hop, L, r=3, p=10, c=3):
         A M x N nonnegative target matrix
     WAbs: ndarray(M, K)
         STFT magnitudes corresponding to WSound
-    win: int
-        Window length of STFT 
-    hop: int
-        Hop length of STFT 
     L: int
         Number of iterations
     r: int
@@ -115,6 +111,8 @@ def get_musaic_activations(V, WAbs, win, hop, L, r=3, p=10, c=3):
         un-shrunken
     c: int
         Half length of time-continuous activation filter
+    verbose: bool
+        Whether to print progress info
     
     Returns
     -------
@@ -129,7 +127,8 @@ def get_musaic_activations(V, WAbs, win, hop, L, r=3, p=10, c=3):
     VAbs = np.abs(V)
     H = np.random.rand(K, N)
     for l in range(L):
-        print(l, end='.') # Print out iteration number for progress
+        if verbose:
+            print(l, end='.') # Print out iteration number for progress
         iterfac = 1-float(l+1)/L       
 
         #Step 1: Avoid repeated activations
@@ -155,5 +154,17 @@ def get_musaic_activations(V, WAbs, win, hop, L, r=3, p=10, c=3):
 
 def create_musaic_sliding(V, WSound, WAbs, win, hop, slidewin, L, r=3, p=10, c=3):
     nwin = V.shape[1]-slidewin+1
+    y = np.zeros(V.shape[1]*hop+win)
     for j in range(nwin):
-        pass
+        print(j, end=".")
+        H = get_musaic_activations(V[:, j:j+slidewin], WAbs, L, r, p, c)
+        if j == 0:
+            yj = do_windowed_sum(WSound, H, win, hop)
+            y[0:yj.size] = yj
+        else:
+            H = H[:, -1::]
+            j1 = hop*(j+slidewin-1)
+            yj = WSound.dot(H)
+            y[j1:j1+win] += yj.flatten()
+    return y
+
