@@ -30,6 +30,13 @@ def get_random_combination(N, p):
     ret = s[0, 0:p].toarray()
     return np.array(ret.flatten(), dtype=int)
 
+def do_KL(Wi, Wd, Vt, hi, L):
+    for l in range(L):
+        WH = Wi.dot(hi)
+        WH[WH == 0] = 1
+        VLam = Vt/WH
+        hi[:] *= ((Wi.T).dot(VLam)/Wd)
+
 #@jit(nopython=True)
 def propagate_particles(W, WDenom, pruned_idxs, Ht, Vt, ws, states, states_next, pd, sigma, L):
     """
@@ -90,7 +97,8 @@ def propagate_particles(W, WDenom, pruned_idxs, Ht, Vt, ws, states, states_next,
                 finished = True
                 states[i, :] = states_next[i, :]
         
-        ## Step 2: For any index that's not in the set of pruned indices,
+        ## Step 2: If pruning is enabled:
+        ## For any index that's not in the set of pruned indices,
         ## sample uniformly at random from one of the pruned ones
         if len(pruned_idxs) >= p:
             pruned_copy = pruned_idxs.copy()
@@ -109,12 +117,7 @@ def propagate_particles(W, WDenom, pruned_idxs, Ht, Vt, ws, states, states_next,
         Wi = W[:, states[i]]
         Wd[:, 0] = WDenom[states[i]]
         hi[:, 0] = Ht[:, i]
-        
-        for l in range(L):
-            WH = Wi.dot(hi)
-            WH[WH == 0] = 1
-            VLam = Vt/WH
-            hi = hi*((Wi.T).dot(VLam)/Wd)
+        do_KL(Wi, Wd, Vt, hi, L)
         Ht[:, i] = hi[:, 0]
         Vi[:, i] = Wi.dot(hi).flatten()
     
@@ -167,7 +170,25 @@ def update_valid_idxs(valid_idxs, tree, Vt, d, B, N):
     pruned_idxs = set(pruned_idxs[pruned_idxs < N])
     return pruned_idxs, tidxs
 
-def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0.1):
+def get_marginal_probabilities(states, ws, N):
+    """
+    Compute the marginal probabilities of each state in W
+
+    Parameters
+    ----------
+    states: ndarray(P, p)
+        Column choices in W corresponding to each particle
+    ws: ndarray(P)
+        Weights of particles
+    N: int
+        Number of columns in W
+    """
+    probs = np.zeros(N)
+    for state, w in zip(states, ws):
+        probs[state] += w
+    return probs / states.shape[1]
+
+def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0):
     """
 
     Parameters
@@ -208,7 +229,7 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0.1):
     T = V.shape[1]
     N = W.shape[1]
     print("T = ", T, ", N = ", N)
-    WDenom = np.sum(W, 0)
+    WDenom = np.sum(W, axis=0)
     WDenom[WDenom == 0] = 1
 
     ## Choose initial combinations
@@ -220,6 +241,8 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0.1):
     states_next = np.zeros_like(states)
     ws = np.ones(P)/P
     H = np.zeros((N, T))
+    HMarginal = np.zeros((N, T))
+    probs = np.zeros((N, T))
     idxsmax = np.zeros(T)
     wsmax = np.zeros(T)
     for t in range(T):
@@ -228,13 +251,16 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0.1):
         ## Step 1: Figure out valid indices and collect the columns
         ## of W that correspond to them
         Vt = V[:, t]
-        pruned_idxs, tidxs = update_valid_idxs(valid_idxs, tree, Vt, d, B, N)
-        #print(N, len(tidxs), len(pruned_idxs))
-        
+        pruned_idxs = []
+        if gamma > 0:
+            pruned_idxs, tidxs = update_valid_idxs(valid_idxs, tree, Vt, d, B, N)
+            #print(N, len(tidxs), len(pruned_idxs))
+
         ## Step 2 and 3: Sample from proposal distribution and apply observation update
         Vt = Vt[:, None]
         Ht = np.random.rand(p, P)
         propagate_particles(W, WDenom, pruned_idxs, Ht, Vt, ws, states, states_next, pd, sigma, L)
+        probs[:, t] = get_marginal_probabilities(states, ws, N)
 
         ## Step 4: Resample
         ws /= np.sum(ws)
@@ -243,6 +269,5 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0.1):
         H[states[idx], t] = Ht[:, idx]
         idxsmax[t] = idx
         wsmax[t] = ws[idx]
-
     
-    return H, idxsmax, wsmax
+    return H, idxsmax, wsmax, probs
