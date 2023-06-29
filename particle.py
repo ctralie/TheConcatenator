@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from combinadics import Combination, Choose
 from collections import deque
 from scipy.spatial import KDTree
 from numba import jit
@@ -233,10 +232,7 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0):
     WDenom[WDenom == 0] = 1
 
     ## Choose initial combinations
-    c = Combination(N, p)
-    states = get_random_combination(Choose(N, p), P)
-    print(len(np.unique(states)), "particles")
-    states = [c.Element(s).data for s in states]
+    states = [get_random_combination(N, p) for i in range(P)]
     states = np.array(states, dtype=int)
     states_next = np.zeros_like(states)
     ws = np.ones(P)/P
