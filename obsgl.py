@@ -141,7 +141,7 @@ class Observer:
         content = [
             (
             self.ctx.buffer(
-                states.flatten()),
+                np.array(states.flatten(), dtype=np.int32)),
                 '{}i'.format(self.p),
                 'state'
             )
