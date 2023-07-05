@@ -51,7 +51,7 @@ def update_valid_idxs(valid_idxs, tree, Vt, d, B, N):
     pruned_idxs = set(pruned_idxs[pruned_idxs < N])
     return pruned_idxs, tidxs
 
-def propagate_particles(W, pruned_idxs, states, pd):
+def propagate_particles(W, pruned_idxs, states, pd, rejection_sample=False):
     """
     For each particle, sample from the proposal distribution
 
@@ -66,6 +66,8 @@ def propagate_particles(W, pruned_idxs, states, pd):
         Updated by reference
     pd: float
         Probability of remaining in the same column in time order
+    rejection_sample: bool
+        Whether to do rejection sampling to prevent collisions of activations
     """
     N = W.shape[1]
     P = states.shape[0]
@@ -88,7 +90,7 @@ def propagate_particles(W, pruned_idxs, states, pd):
                     if next == states[i][j]+1: # next 7, make next 9
                         next = N-1
                     state_next[j] = next
-            if len(np.unique(state_next)) == p:
+            if not rejection_sample or (len(np.unique(state_next)) == p):
                 finished = True
                 states[i, :] = state_next
         
@@ -108,7 +110,7 @@ def propagate_particles(W, pruned_idxs, states, pd):
                     states[i, j] = choices[cidx]
                     cidx += 1
 
-def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, neff_thresh=0, use_gpu=False):
+def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, neff_thresh=0, use_gpu=True):
     """
 
     Parameters
