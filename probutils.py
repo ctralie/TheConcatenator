@@ -26,6 +26,40 @@ def get_activations_diff(H, p):
         diff.append(p-same)
     return np.array(diff)
 
+def get_repeated_activation_itervals(H, p):
+    """
+    Compute the distances from each activation to its first repetition
+
+    Parameters
+    ----------
+    H: ndarray(N, T)
+        Activations matrix
+    p: int
+        Number of activations per timestep
+    
+    Returns
+    -------
+    ndarray(<= p*T)
+        Distance of each activation to its first repetition, 
+        if that activation actually had a repetition
+    """
+    idx = np.argsort(-H, axis=0)[0:p, :]
+    columns = [set(idx[:, j]) for j in range(H.shape[1])]
+    diffs = []
+    for i in range(idx.shape[0]):
+        for j in range(idx.shape[1]):
+            k = j+1
+            finished = False
+            while k < H.shape[1] and not finished:
+                if idx[i, j] in columns[k]:
+                    finished = True
+                else:
+                    k += 1
+            if finished:
+                diffs.append(k-j)
+    return np.array(diffs, dtype=int)
+
+
 def get_random_combination(N, p):
     """
     Choose p elements out of N possible elements in {0, 1, ..., N-1}

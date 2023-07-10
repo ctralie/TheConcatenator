@@ -110,7 +110,7 @@ def propagate_particles(W, pruned_idxs, states, pd, rejection_sample=False):
                     states[i, j] = choices[cidx]
                     cidx += 1
 
-def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, neff_thresh=0, use_gpu=True):
+def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, c=3, neff_thresh=0, use_gpu=True):
     """
 
     Parameters
@@ -131,6 +131,8 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, neff_thre
         Number of particles
     gamma: float
         Cosine similarity cutoff
+    c: int
+        Repeated activations cutoff
     neff_thresh: float
         Number of effective particles below which to resample
     use_gpu: bool
@@ -168,6 +170,7 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, neff_thre
     states = np.array(states, dtype=int)
     ws = np.ones(P)/P
     H = np.zeros((N, T))
+    chosen_idxs = np.zeros((p, T), dtype=int)
     neff = np.zeros(T)
     wsmax = np.zeros(T)
     for t in range(T):
@@ -192,11 +195,24 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, neff_thre
             ws *= observer.observe_slow(states, t)
 
         ## Step 4: Figure out the activations for this timestep
-        ## TODO: Aggregate multiple particles near the top
-        idx = np.argmax(ws)
-        H[states[idx], t] = do_KL(W[:, states[idx]], V[:, t], L)
-        wsmax[t] = ws[idx]
-
+        ## by aggregating multiple particles near the top
+        wsmax[t] = np.max(ws)
+        probs = np.zeros(N)
+        max_particles = np.argpartition(-ws, 2*p)[0:2*p]
+        for state, w in zip(states[max_particles], ws[max_particles]):
+            probs[state] += w
+        # Promote states that follow the last state that was chosen
+        for dc in range(max(t-1, 0), t):
+            last_state = chosen_idxs[:, dc] + (t-dc)
+            probs[last_state[last_state < N]] *= 5
+        # Zero out last ones to prevent repeated activations
+        for dc in range(max(t-c, 0), t):
+            probs[chosen_idxs[:, dc]] = 0
+        top_idxs = np.argpartition(-probs, p)[0:p]
+        
+        chosen_idxs[:, t] = top_idxs
+        H[top_idxs, t] = do_KL(W[:, top_idxs], V[:, t], L)
+        
         ## Step 5: Resample particles
         ws /= np.sum(ws)
         neff[t] = 1/np.sum(ws**2)
