@@ -59,6 +59,32 @@ def get_repeated_activation_itervals(H, p):
                 diffs.append(k-j)
     return np.array(diffs, dtype=int)
 
+def get_diag_lengths(H, p):
+    """
+    Compute the lengths of all diagonals
+
+    Parameters
+    ----------
+    H: ndarray(N, T)
+        Activations matrix
+    p: int
+        Number of activations per timestep
+    
+    Returns
+    -------
+    ndarray(<= p*T)
+        The lengths of each diagonal
+    """
+    idxs = np.argsort(-H, axis=0)[0:p, :]
+    idxs = [set(idxs[:, j]) for j in range(H.shape[1])]
+    diags = []
+    for j in range(H.shape[1]):
+        for idx in idxs[j]:
+            k = j+1
+            while k < H.shape[1] and idx+(k-j) in idxs[k]:
+                k += 1
+            diags.append(k-j)
+    return np.array(diags, dtype=int)
 
 def get_random_combination(N, p):
     """
