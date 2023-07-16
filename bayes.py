@@ -61,6 +61,10 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
 
     for t in range(T):
         Vt = V[:, t][:, None]
+        VtNorm = V[:, t]
+        denom = np.sqrt(np.sum(VtNorm**2))
+        if denom > 0:
+            VtNorm /= denom
         if t%10 == 0:
             print(".", end="")
 
@@ -69,10 +73,11 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
         ws = pd*wspad[0:-1] + jump_fac*(1-wspad[0:-1]-ws)
 
         ## Step 2: Apply the observation probability updates
-        h = np.sum(Vt*W, axis=0)
-        Vi = h[None, :]*W
-        num = (np.mean(Vt*np.log(Vt/Vi) - Vt + Vi, axis=0)/Vt_std[t])**2
-        obs_prob = np.exp(-num/sigma**2)
+        obs_prob = np.sum(VtNorm[:, None]*W, axis=0)
+        obs_prob[obs_prob < -1] = -1
+        obs_prob[obs_prob > 1] = 1
+        obs_prob = np.arccos(obs_prob)
+        obs_prob = np.exp(-obs_prob**2 / (2*sigma**2))
         if np.sum(obs_prob) > 0:
             ws = ws*obs_prob
             ws /= np.sum(ws)

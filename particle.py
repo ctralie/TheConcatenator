@@ -54,7 +54,7 @@ def propagate_particles(W, proposal_idxs, states, pd, rejection_sample=False):
                 finished = True
                 states[i, :] = state_next
 
-def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, c=3, neff_thresh=0, use_gpu=True):
+def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, c=3, neff_thresh=0, use_gpu=True):
     """
 
     Parameters
@@ -64,7 +64,9 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, c=3, neff
     W: ndarray(M, N)
         STFT magnitudes in the corpus
     p: int
-        Sparsity parameter
+        Sparsity parameter for particles
+    pfinal: int
+        Sparsity parameter for final activations
     pd: float
         State transition probability
     sigma: float
@@ -112,7 +114,7 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, c=3, neff
     states = np.array(states, dtype=int)
     ws = np.ones(P)/P
     H = np.zeros((N, T))
-    chosen_idxs = np.zeros((p, T), dtype=int)
+    chosen_idxs = np.zeros((pfinal, T), dtype=int)
     neff = np.zeros(T)
     wsmax = np.zeros(T)
     for t in range(T):
@@ -146,7 +148,7 @@ def get_particle_musaic_activations(V, W, p, pd, sigma, L, P, gamma=0, c=3, neff
         # Zero out last ones to prevent repeated activations
         for dc in range(max(t-c, 0), t):
             probs[chosen_idxs[:, dc]] = 0
-        top_idxs = np.argpartition(-probs, p)[0:p]
+        top_idxs = np.argpartition(-probs, pfinal)[0:pfinal]
         
         chosen_idxs[:, t] = top_idxs
         H[top_idxs, t] = do_KL(W[:, top_idxs], V[:, t], L)
