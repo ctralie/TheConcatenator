@@ -37,19 +37,15 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
     """
 
     ## Setup KDTree for proposal indices
-    WMag = np.sqrt(np.sum(W.T**2, axis=1))
+    WMag = np.sqrt(np.sum(W**2, axis=0))
     WMag[WMag == 0] = 1
-    WNorm = W.T/WMag[:, None] # Vector normalized version for KDTree
-    tree = KDTree(WNorm)
+    WNorm = W/WMag[None, :] # Vector normalized version for KDTree
+    tree = KDTree(WNorm.T)
     d = 2*(1-gamma)**0.5 # KDTree distance corresponding to gamma cosine similarity
 
     ## Setup W and the observation probability function
     T = V.shape[1]
     N = W.shape[1]
-    WDenom = np.sum(W, axis=0)
-    WDenom[WDenom == 0] = 1
-    W = W/WDenom # Normalize so projection is more efficient
-    Vt_std = np.std(V, axis=0)
 
     ## Initialize weights
     ws = np.ones(N)/N
@@ -60,11 +56,6 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
     wsmax = np.zeros(T)
 
     for t in range(T):
-        Vt = V[:, t][:, None]
-        VtNorm = V[:, t]
-        denom = np.sqrt(np.sum(VtNorm**2))
-        if denom > 0:
-            VtNorm /= denom
         if t%10 == 0:
             print(".", end="")
 
@@ -73,15 +64,13 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
         ws = pd*wspad[0:-1] + jump_fac*(1-wspad[0:-1]-ws)
 
         ## Step 2: Apply the observation probability updates
-        obs_prob = np.sum(VtNorm[:, None]*W, axis=0)
-        obs_prob[obs_prob < -1] = -1
-        obs_prob[obs_prob > 1] = 1
-        obs_prob = np.arccos(obs_prob)
-        obs_prob = np.exp(-obs_prob**2 / (2*sigma**2))
-        if np.sum(obs_prob) > 0:
+        obs_prob = np.sum(V[:, t][:, None]*WNorm, axis=0)
+        obs_prob = np.exp(obs_prob*sigma/np.max(obs_prob))
+        denom = np.sum(obs_prob)
+        if denom > 0:
+            obs_prob /= denom
             ws = ws*obs_prob
             ws /= np.sum(ws)
-        
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
@@ -96,8 +85,9 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
         top_idxs = np.argpartition(-probs, p)[0:p]
         
         chosen_idxs[:, t] = top_idxs
+        H[top_idxs, t] = do_KL(W[:, top_idxs], V[:, t], L)
+        
         neff[t] = 1/np.sum(ws**2)
         wsmax[t] = np.max(ws)
-        H[top_idxs, t] = do_KL(W[:, top_idxs], V[:, t], L)
-
+    
     return H, wsmax, neff

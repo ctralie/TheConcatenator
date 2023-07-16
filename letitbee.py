@@ -91,7 +91,7 @@ def diagonally_enhance_H(H, c):
         else:
             di -= 1
 
-def get_musaic_activations(V, WAbs, L, r=3, p=10, c=3, verbose=False):
+def get_musaic_activations(V, W, L, r=3, p=10, c=3, verbose=False):
     """
     Implement the technique from "Let It Bee-Towards NMF-Inspired
     Audio Mosaicing"
@@ -100,7 +100,7 @@ def get_musaic_activations(V, WAbs, L, r=3, p=10, c=3, verbose=False):
     ----------
     V: ndarray(M, N)
         A M x N nonnegative target matrix
-    WAbs: ndarray(M, K)
+    W: ndarray(M, K)
         STFT magnitudes corresponding to WSound
     L: int
         Number of iterations
@@ -120,8 +120,8 @@ def get_musaic_activations(V, WAbs, L, r=3, p=10, c=3, verbose=False):
         Activations matrix
     """
     N = V.shape[1]
-    K = WAbs.shape[1]
-    WDenom = np.sum(WAbs, 0)
+    K = W.shape[1]
+    WDenom = np.sum(W, 0)
     WDenom[WDenom == 0] = 1
 
     VAbs = np.abs(V)
@@ -143,21 +143,21 @@ def get_musaic_activations(V, WAbs, L, r=3, p=10, c=3, verbose=False):
         diagonally_enhance_H(H, c)
 
         #KL Divergence Version
-        WH = WAbs.dot(H)
+        WH = W.dot(H)
         WH[WH == 0] = 1
         VLam = VAbs/WH
-        H = H*((WAbs.T).dot(VLam)/WDenom[:, None])
+        H = H*((W.T).dot(VLam)/WDenom[:, None])
     
     return H
 
 
 
-def create_musaic_sliding(V, WSound, WAbs, win, hop, slidewin, L, r=3, p=10, c=3):
+def create_musaic_sliding(V, WSound, W, win, hop, slidewin, L, r=3, p=10, c=3):
     nwin = V.shape[1]-slidewin+1
     y = np.zeros(V.shape[1]*hop+win)
     for j in range(nwin):
         print(j, end=".")
-        H = get_musaic_activations(V[:, j:j+slidewin], WAbs, L, r, p, c)
+        H = get_musaic_activations(V[:, j:j+slidewin], W, L, r, p, c)
         if j == 0:
             yj = do_windowed_sum(WSound, H, win, hop)
             y[0:yj.size] = yj
