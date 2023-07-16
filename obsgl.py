@@ -12,15 +12,13 @@ VERTEX_SHADER = '''
 #define T   %i
 #define Tf  %i.0
 #define L   %i
-#define sigma %g
 
 in int state[p];
 
 uniform sampler2D WV;
 uniform int t;
-uniform float Vt_std;
 
-out float prob;
+out float dot;
 
 float W(int i, int j) {
     return texture(WV, vec2((i+0.5)/Mf, (state[j]+0.5)/(Nf+Tf))).r;
@@ -60,24 +58,35 @@ void main()
     }
     
     
-    // Step 2: Compute observation probability
-    prob = 0;
+    // Step 2: Compute norm of approximation
+    float norm = 0;
+    for (int i = 0; i < M; i++) {
+        float WHi = 0.0;
+        for (int k = 0; k < p; k++) {
+            WHi += h[k]*W(i, k);
+        }
+        norm += WHi*WHi;
+    }
+    norm = sqrt(norm);
+
+    // Step 3: Compute the projection of the normed approximation
+    // onto the observation
+    dot = 0;
     for (int i = 0; i < M; i++) {
         float WHi = 0.0;
         for (int k = 0; k < p; k++) {
             WHi += h[k]*W(i, k);
         }
         float Vi = V(i, t);
-        prob += Vi*log(Vi/WHi) - Vi + WHi;
+        dot += Vi*WHi;
     }
-    prob = prob/(Vt_std*M);
-    prob = exp(-prob*prob/(sigma*sigma));
+    dot /= norm;
 }
 '''
 
 
 class Observer:
-    def __init__(self, p, W, V, L, sigma):
+    def __init__(self, p, W, V, L):
         """
         Constructor for a class that computes observation probabilities
         quickly using moderngl
@@ -102,7 +111,6 @@ class Observer:
         self.W = W
         self.V = V
         self.L = L
-        self.sigma = sigma
         WV = np.concatenate((W, V), axis=1)
         WV = np.array((WV.T).flatten(), dtype=np.float32)
         ctx = moderngl.create_standalone_context()
@@ -110,14 +118,12 @@ class Observer:
         texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
         texture.use()
         program = ctx.program(
-            vertex_shader=VERTEX_SHADER%(p, M, M, N, N, T, T, L, sigma),
-            varyings=["prob"]
+            vertex_shader=VERTEX_SHADER%(p, M, M, N, N, T, T, L),
+            varyings=["dot"]
         )
         self.ut = program['t']
-        self.uVt_std = program['Vt_std']
         self.ctx = ctx
         self.program = program
-        self.Vt_std = np.std(V, axis=0)
 
     def observe(self, states, t):
         """
@@ -148,7 +154,6 @@ class Observer:
         ]
         vao = self.ctx.vertex_array(self.program, content)
         self.ut.value = t
-        self.uVt_std.value = self.Vt_std[t]
 
         buffer = self.ctx.buffer(reserve=P*4)
         vao.transform(buffer, vertices=P)
@@ -178,7 +183,6 @@ class Observer:
         from probutils import do_KL
         P = states.shape[0]
         Vt = self.V[:, t]
-        Vt_std = self.Vt_std[t]
         Vi = np.zeros((Vt.shape[0], P))
 
         for i in range(P):
@@ -187,6 +191,8 @@ class Observer:
             hi = do_KL(Wi, Vt, self.L)
             Vi[:, i] = Wi.dot(hi).flatten()
         
-        Vt = Vt[:, None]
-        num = (np.mean(Vt*np.log(Vt/Vi) - Vt + Vi, axis=0)/Vt_std)**2
-        return np.exp(-num/self.sigma**2)
+        ViNorms = np.sqrt(np.sum(Vi**2, axis=0))
+        ViNorms[ViNorms == 0] = 1
+        Vi /= ViNorms[None, :]
+
+        return np.sum(Vt[:, None]*Vi, axis=0)

@@ -54,7 +54,7 @@ def propagate_particles(W, proposal_idxs, states, pd, rejection_sample=False):
                 finished = True
                 states[i, :] = state_next
 
-def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True):
+def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True):
     """
 
     Parameters
@@ -69,8 +69,8 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, r
         Sparsity parameter for final activations
     pd: float
         State transition probability
-    sigma: float
-        Observation variance
+    temperature: float
+        Amount to focus on matching observations
     L: int
         Number of iterations for NMF observation probabilities
     P: int
@@ -107,7 +107,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, r
     N = W.shape[1]
     WDenom = np.sum(W, axis=0)
     WDenom[WDenom == 0] = 1
-    observer = obsgl.Observer(p, W/WDenom, V, L, sigma)
+    observer = obsgl.Observer(p, W/WDenom, V, L)
 
     ## Choose initial combinations
     states = [get_random_combination(N, p) for i in range(P)]
@@ -129,10 +129,14 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, r
         propagate_particles(W, proposal_idxs, states, pd)
 
         ## Step 2: Apply the observation probability updates
+        dots = []
         if use_gpu:
-            ws *= observer.observe(states, t)
+            dots = observer.observe(states, t)
         else:
-            ws *= observer.observe_slow(states, t)
+            dots = observer.observe_slow(states, t)
+        obs_prob = np.exp(dots*temperature/np.max(dots))
+        obs_prob /= np.sum(obs_prob)
+        ws *= obs_prob
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
