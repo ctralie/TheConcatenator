@@ -4,7 +4,7 @@ import time
 from scipy.spatial import KDTree
 from probutils import do_KL
 
-def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
+def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, c=3):
     """
 
     Parameters
@@ -17,8 +17,8 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
         Sparsity parameter
     pd: float
         State transition probability
-    sigma: float
-        Observation variance
+    temperature: float
+        Amount to focus on matching observations
     L: int
         Number of iterations for NMF observation probabilities
     gamma: float
@@ -65,7 +65,7 @@ def get_bayes_musaic_activations(V, W, p, pd, sigma, L, gamma=0, c=3):
 
         ## Step 2: Apply the observation probability updates
         obs_prob = np.sum(V[:, t][:, None]*WNorm, axis=0)
-        obs_prob = np.exp(obs_prob*sigma/np.max(obs_prob))
+        obs_prob = np.exp(obs_prob*temperature/np.max(obs_prob))
         denom = np.sum(obs_prob)
         if denom > 0:
             obs_prob /= denom
