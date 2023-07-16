@@ -54,7 +54,7 @@ def propagate_particles(W, proposal_idxs, states, pd, rejection_sample=False):
                 finished = True
                 states[i, :] = state_next
 
-def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, c=3, neff_thresh=0, use_gpu=True):
+def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True):
     """
 
     Parameters
@@ -77,7 +77,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, c
         Number of particles
     gamma: float
         Cosine similarity cutoff
-    c: int
+    r: int
         Repeated activations cutoff
     neff_thresh: float
         Number of effective particles below which to resample
@@ -146,7 +146,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, sigma, L, P, gamma=0, c
             last_state = chosen_idxs[:, dc] + (t-dc)
             probs[last_state[last_state < N]] *= 5
         # Zero out last ones to prevent repeated activations
-        for dc in range(max(t-c, 0), t):
+        for dc in range(max(t-r, 0), t):
             probs[chosen_idxs[:, dc]] = 0
         top_idxs = np.argpartition(-probs, pfinal)[0:pfinal]
         

@@ -4,7 +4,7 @@ import time
 from scipy.spatial import KDTree
 from probutils import do_KL
 
-def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, c=3):
+def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, r=3):
     """
 
     Parameters
@@ -23,7 +23,7 @@ def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, c=3):
         Number of iterations for NMF observation probabilities
     gamma: float
         Cosine similarity cutoff
-    c: int
+    r: int
         Repeated activations cutoff
     
     Returns
@@ -80,7 +80,7 @@ def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, c=3):
             last_state = chosen_idxs[:, dc] + (t-dc)
             probs[last_state[last_state < N]] *= 5
         # Zero out last ones to prevent repeated activations
-        for dc in range(max(t-c, 0), t):
+        for dc in range(max(t-r, 0), t):
             probs[chosen_idxs[:, dc]] = 0
         top_idxs = np.argpartition(-probs, p)[0:p]
         
