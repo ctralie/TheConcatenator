@@ -98,7 +98,9 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     WMag = np.sqrt(np.sum(W.T**2, axis=1))
     WMag[WMag == 0] = 1
     WNorm = W.T/WMag[:, None] # Vector normalized version for KDTree
-    tree = KDTree(WNorm)
+    tree = None
+    if gamma > 0:
+        tree = KDTree(WNorm)
     d = 2*(1-gamma)**0.5 # KDTree distance corresponding to gamma cosine similarity
     proposal_idxs = []
 
@@ -119,7 +121,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     wsmax = np.zeros(T)
     for t in range(T):
         if t%10 == 0:
-            print(".", end="")
+            print(".", end="", flush=True)
         ## Step 1: Figure out valid indices and collect the columns
         ## of W that correspond to them
         
@@ -167,11 +169,12 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
 
         ## Step 5: Sample proposal indices for next iteration based on 
         ## current observation
-        Vt = Vt.flatten()
-        VtNorm = np.sqrt(np.sum(Vt**2))
-        proposal_idxs = []
-        if VtNorm > 0:
-            proposal_idxs = np.array(tree.query_ball_point(Vt/VtNorm, d), dtype=int)+1
-            proposal_idxs = proposal_idxs[proposal_idxs < N]
+        if gamma > 0:
+            Vt = Vt.flatten()
+            VtNorm = np.sqrt(np.sum(Vt**2))
+            proposal_idxs = []
+            if VtNorm > 0:
+                proposal_idxs = np.array(tree.query_ball_point(Vt/VtNorm, d), dtype=int)+1
+                proposal_idxs = proposal_idxs[proposal_idxs < N]
 
     return H, wsmax, neff

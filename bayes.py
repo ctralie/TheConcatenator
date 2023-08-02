@@ -1,10 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import time
-from scipy.spatial import KDTree
 from probutils import do_KL
 
-def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, r=3):
+def get_bayes_musaic_activations(V, W, p, pd, temperature, L, r=3):
     """
 
     Parameters
@@ -21,8 +18,6 @@ def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, r=3):
         Amount to focus on matching observations
     L: int
         Number of iterations for NMF observation probabilities
-    gamma: float
-        Cosine similarity cutoff
     r: int
         Repeated activations cutoff
     
@@ -40,8 +35,6 @@ def get_bayes_musaic_activations(V, W, p, pd, temperature, L, gamma=0, r=3):
     WMag = np.sqrt(np.sum(W**2, axis=0))
     WMag[WMag == 0] = 1
     WNorm = W/WMag[None, :] # Vector normalized version for KDTree
-    tree = KDTree(WNorm.T)
-    d = 2*(1-gamma)**0.5 # KDTree distance corresponding to gamma cosine similarity
 
     ## Setup W and the observation probability function
     T = V.shape[1]

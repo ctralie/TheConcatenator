@@ -8,64 +8,6 @@ import scipy.io as sio
 import scipy.ndimage
 import matplotlib.pyplot as plt
 import time
-import librosa
-import librosa.display
-
-hann_window = lambda N: 0.5*(1 - np.cos(2*np.pi*np.arange(N)/N))
-
-def get_windowed(x, hop, win, win_fn=hann_window):
-    """
-    Stack sliding windows of audio, multiplied by a window function,
-    into the columns of a 2D array
-
-    x: ndarray(N)
-        Audio clip of N samples
-    win: int
-        Window length
-    hop: int
-        Hop length
-    win_fn: int -> ndarray(win)
-        Window function
-
-    Returns
-    -------
-    ndarray(win, n_windows)
-        Windowed audio
-    """
-    nwin = int(np.ceil((x.size-win)/hop))+1
-    S = np.zeros((win, nwin))
-    coeff = win_fn(win)
-    for j in range(nwin):
-        xj = x[hop*j:hop*j+win]
-        # Zeropad if necessary
-        if len(xj) < win:
-            xj = np.concatenate((xj, np.zeros(win-len(xj))))
-        # Apply window function
-        xj = coeff*xj
-        S[:, j] = xj
-    return S
-
-
-def do_windowed_sum(WSound, H, win, hop):
-    """
-    The inverse of the get_windowed method on a product W*H
-
-    Parameters
-    ----------
-    WSound: ndarray(win_length, K) 
-        An win x K matrix of template sounds in some time order along the second axis
-    H: ndarray(K, N)
-        Activations matrix
-    win: int
-        Window length
-    hop: int
-        Hop length
-    """
-    yh = WSound.dot(H)
-    y = np.zeros(yh.shape[1]*hop+win)
-    for j in range(yh.shape[1]):
-        y[j*hop:j*hop+win] += yh[:, j]
-    return y
 
 
 def diagonally_enhance_H(H, c):

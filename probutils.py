@@ -177,14 +177,14 @@ def stochastic_universal_sample(ws, target_points):
         idx = idx % ws.size
         counts[order[idx]] += 1
         p = (p + 1/target_points) % 1
-    ws_new = []
-    choices = []
+    ws_new = np.zeros(ws.size)
+    choices = np.zeros(ws.size, dtype=int)
+    idx = 0
     for i in range(len(counts)):
         for w in range(counts[i]):
-            choices.append(i)
-            ws_new.append(ws[i]/counts[i])
-    choices = np.array(choices, dtype=int)
-    ws_new = np.array(ws_new)
+            choices[idx] = i
+            ws_new[idx] = ws[i]/counts[i]
+            idx += 1
     ws_new /= np.sum(ws_new)
     return choices, ws_new
 
