@@ -1,58 +1,8 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import time
-from collections import deque
 from scipy.spatial import KDTree
-from probutils import get_random_combination, stochastic_universal_sample, do_KL
+from probutils import stochastic_universal_sample, do_KL
 from observer import Observer
-
-def propagate_particles(W, proposal_idxs, states, pd, rejection_sample=False):
-    """
-    For each particle, sample from the proposal distribution
-
-    Parameters
-    ----------
-    W: ndarray(M, N)
-        STFT magnitudes in the corpus
-    proposal_idxs: ndarray(<= N)
-        Subset of indices of W to choose more frequently
-        based on observations
-    states: ndarray(P, p)
-        Column choices in W corresponding to each particle;
-        Updated by reference
-    pd: float
-        Probability of remaining in the same column in time order
-    rejection_sample: bool
-        Whether to do rejection sampling to prevent collisions of activations
-    """
-    N = W.shape[1]
-    P = states.shape[0]
-    p = states.shape[1]
-
-    state_next = np.zeros(p, dtype=int)
-    for i in range(P):
-        ## Step 1: Sample from proposal distribution for each particle
-        finished = False
-        while not finished: # Do rejection sampling
-            for j in range(p):
-                if states[i][j] < N-1 and np.random.rand() < pd:
-                    state_next[j] = states[i][j] + 1
-                else:
-                    if len(proposal_idxs) == 0 or np.random.rand() < 0.25:
-                        # Choose a random element not equal to state[j] or state[j]+1
-                        next = np.random.randint(N-2)
-                    else:
-                        # Choose a random element from the proposal set
-                        next = np.random.choice(proposal_idxs)
-                    # Ex) N = 10, state[j] = 6; avoid 6 and 7
-                    if next == states[i][j]: # next = 6, make next 8
-                        next = N-2
-                    if next == states[i][j]+1: # next 7, make next 9
-                        next = N-1
-                    state_next[j] = next
-            if not rejection_sample or (len(np.unique(state_next)) == p):
-                finished = True
-                states[i, :] = state_next
+from propagator import Propagator
 
 def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True):
     """
@@ -110,10 +60,10 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     WDenom = np.sum(W, axis=0)
     WDenom[WDenom == 0] = 1
     observer = Observer(p, W/WDenom, V, L)
+    propagator = Propagator(N, pd)
 
     ## Choose initial combinations
-    states = [get_random_combination(N, p) for i in range(P)]
-    states = np.array(states, dtype=int)
+    states = np.random.randint(N, size=(P, p))
     ws = np.ones(P)/P
     H = np.zeros((N, T))
     chosen_idxs = np.zeros((pfinal, T), dtype=int)
@@ -122,13 +72,11 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     for t in range(T):
         if t%10 == 0:
             print(".", end="", flush=True)
-        ## Step 1: Figure out valid indices and collect the columns
-        ## of W that correspond to them
-        
 
         ## Step 1: Sample from the proposal distribution
         Vt = V[:, t][:, None]
-        propagate_particles(W, proposal_idxs, states, pd)
+        #propagate_particles(W, proposal_idxs, states, pd)
+        propagator.propagate_numba(states)
 
         ## Step 2: Apply the observation probability updates
         dots = []
