@@ -72,8 +72,8 @@ if __name__ == '__main__':
 
     prefix = "Particle_p{}_pd{}_temperature{}_L{}_r{}_P{}_neff{}".format(p, pd, temperature, L, r, P, neff_thresh)
 
-    a = get_activations_diff(H, p)
-    r = get_repeated_activation_itervals(H, p)
+    active_diffs = get_activations_diff(H, p)
+    repeated_intervals = get_repeated_activation_itervals(H, p)
 
     WH = W.dot(H)
     fit = np.sum(V*np.log(V/WH) - V + WH)
@@ -88,18 +88,18 @@ if __name__ == '__main__':
 
     plt.figure(figsize=(12, 8))
     plt.subplot(231)
-    plt.plot(a)
-    plt.legend(["Particle Filter: Mean {:.3f}".format(np.mean(a))])
+    plt.plot(active_diffs)
+    plt.legend(["Particle Filter: Mean {:.3f}".format(np.mean(active_diffs))])
     plt.title("Activation Changes over Time, Temperature {}".format(temperature))
     plt.xlabel("Timestep")
     plt.subplot(232)
-    plt.hist(a, bins=np.arange(p+2))
+    plt.hist(active_diffs, bins=np.arange(30))
     plt.title("Activation Changes Histogram")
     plt.xlabel("Number of Activations Changed")
     plt.ylabel("Counts")
     plt.legend(["Ground Truth", "Particle Filter"])
     plt.subplot(233)
-    plt.hist(r, bins=np.arange(30))
+    plt.hist(repeated_intervals, bins=np.arange(30))
     plt.title("Repeated Activations Histogram, r={}".format(r))
     plt.xlabel("Repeated Activation Distance")
     plt.ylabel("Counts")

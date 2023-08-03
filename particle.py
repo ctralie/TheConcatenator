@@ -4,7 +4,7 @@ import time
 from collections import deque
 from scipy.spatial import KDTree
 from probutils import get_random_combination, stochastic_universal_sample, do_KL
-import obsgl
+from observer import Observer
 
 def propagate_particles(W, proposal_idxs, states, pd, rejection_sample=False):
     """
@@ -109,7 +109,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     N = W.shape[1]
     WDenom = np.sum(W, axis=0)
     WDenom[WDenom == 0] = 1
-    observer = obsgl.Observer(p, W/WDenom, V, L)
+    observer = Observer(p, W/WDenom, V, L)
 
     ## Choose initial combinations
     states = [get_random_combination(N, p) for i in range(P)]
@@ -135,7 +135,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
         if use_gpu:
             dots = observer.observe(states, t)
         else:
-            dots = observer.observe_slow(states, t)
+            dots = observer.observe_cpu(states, t)
         obs_prob = np.exp(dots*temperature/np.max(dots))
         obs_prob /= np.sum(obs_prob)
         ws *= obs_prob

@@ -162,7 +162,7 @@ class Observer:
         return data
     
     
-    def observe_slow(self, states, t):
+    def observe_cpu(self, states, t):
         """
         Compute the observation probabilities for a set of states
         at a particular time.
