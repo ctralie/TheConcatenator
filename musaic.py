@@ -57,6 +57,13 @@ if __name__ == '__main__':
     WR = np.abs(np.fft.fft(WSoundR, axis=0)[0:win//2+1, :])
     W = np.concatenate((WL, WR), axis=0)
 
+    #### TODO: This is a hack for now
+    truncate_idx = 31000
+    W = W[:, 0:truncate_idx]
+    WSoundL = WSoundL[:, 0:truncate_idx]
+    WSoundR = WSoundR[:, 0:truncate_idx]
+    #####
+
     p = opt.p
     pd = opt.pd
     temperature = opt.temperature
@@ -65,12 +72,16 @@ if __name__ == '__main__':
     r = opt.r
     neff_thresh = 0.1*P
 
-    print("Finished setting up corpus; doing particle filter")
-    tic = time.time()
-    H, wsmax, neff = get_particle_musaic_activations(V, W, p, p, pd, temperature, L, P, r=r, neff_thresh=neff_thresh, use_gpu=(opt.use_gpu==1))
-    print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))
-
-    prefix = "Particle_p{}_pd{}_temperature{}_L{}_r{}_P{}_neff{}".format(p, pd, temperature, L, r, P, neff_thresh)
+    if p == 1:
+        print("Finished setting up corpus; doing Bayes filter for p=1")
+        tic = time.time()
+        H, wsmax, neff = get_bayes_musaic_activations(V, W, p, pd, temperature, L, r)
+        print("Elapsed time bayes filter: {:.3f}".format(time.time()-tic))
+    else:
+        print("Finished setting up corpus; doing particle filter")
+        tic = time.time()
+        H, wsmax, neff = get_particle_musaic_activations(V, W, p, p, pd, temperature, L, P, r=r, neff_thresh=neff_thresh, use_gpu=(opt.use_gpu==1))
+        print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))
 
     active_diffs = get_activations_diff(H, p)
     repeated_intervals = get_repeated_activation_itervals(H, p)

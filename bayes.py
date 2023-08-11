@@ -50,7 +50,7 @@ def get_bayes_musaic_activations(V, W, p, pd, temperature, L, r=3):
 
     for t in range(T):
         if t%10 == 0:
-            print(".", end="")
+            print(".", end="", flush=True)
 
         ## Step 1: Apply the transition probabilities
         wspad = np.concatenate((ws[-1::], ws))
