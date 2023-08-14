@@ -1,4 +1,3 @@
-from tkinter import NE
 import moderngl
 import struct
 import numpy as np
@@ -10,8 +9,6 @@ VERTEX_SHADER = '''
 #define p   %i
 #define M   %i
 #define Mf  %i.0
-#define N   %i
-#define Nf  %i.0
 #define L   %i
 #define TEXTURE_WIDTH %i
 #define TEXTURE_WIDTH_F %i.0
@@ -116,16 +113,16 @@ class Observer:
 
         # Break up templates into a stack of textures
         n_stack = int(np.ceil(N/TEXTURE_WIDTH))
-        WTex = np.zeros((TEXTURE_WIDTH, M, n_stack), dtype=np.float32)
+        WTex = np.zeros((n_stack, TEXTURE_WIDTH, M), dtype=np.float32)
         for i in range(n_stack):
             Wi = W[:, i*TEXTURE_WIDTH:(i+1)*TEXTURE_WIDTH].T
-            WTex[0:Wi.shape[0], :, i] = Wi
+            WTex[i, 0:Wi.shape[0], :] = Wi
         texture = ctx.texture_array((M, TEXTURE_WIDTH, n_stack), 1, WTex, dtype="f4")
         texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
         texture.use(0)
 
         program = ctx.program(
-            vertex_shader=VERTEX_SHADER%(p, M, M, N, N, L, TEXTURE_WIDTH, TEXTURE_WIDTH),
+            vertex_shader=VERTEX_SHADER%(p, M, M, L, TEXTURE_WIDTH, TEXTURE_WIDTH),
             varyings=["dot"]
         )
         program['WTex'].value = 0

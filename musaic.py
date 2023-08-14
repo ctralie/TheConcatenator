@@ -57,18 +57,6 @@ if __name__ == '__main__':
     WR = np.abs(np.fft.fft(WSoundR, axis=0)[0:win//2+1, :])
     W = np.concatenate((WL, WR), axis=0)
 
-    #### TODO: This is a hack for now
-    truncate_idx = 32768 - V.shape[1]
-    T_before = W.shape[1]
-    W = W[:, 0:truncate_idx]
-    T_after = W.shape[1]
-    if T_after < T_before:
-        diff = T_before - T_after
-        print("Cutting out last {:.3f}%% of corpus".format(100*diff/T_before))
-    WSoundL = WSoundL[:, 0:truncate_idx]
-    WSoundR = WSoundR[:, 0:truncate_idx]
-    #####
-
     p = opt.p
     pd = opt.pd
     temperature = opt.temperature
