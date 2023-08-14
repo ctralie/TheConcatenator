@@ -59,7 +59,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     N = W.shape[1]
     WDenom = np.sum(W, axis=0)
     WDenom[WDenom == 0] = 1
-    observer = Observer(p, W/WDenom, V, L)
+    observer = Observer(p, W/WDenom, L)
     propagator = Propagator(N, pd)
 
     ## Choose initial combinations

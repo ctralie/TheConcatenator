@@ -2,24 +2,28 @@ import moderngl
 import struct
 import numpy as np
 
+TEXTURE_WIDTH = 1024
+
 VERTEX_SHADER = '''
 #version 330
 #define p   %i
 #define M   %i
 #define Mf  %i.0
-#define N   %i
-#define Nf  %i.0
 #define L   %i
+#define TEXTURE_WIDTH %i
+#define TEXTURE_WIDTH_F %i.0
 
 in int state[p];
 
-uniform sampler2D WTex;
+uniform sampler2DArray WTex;
 uniform sampler2D VTex;
 
 out float dot;
 
 float W(int i, int j) {
-    return texture(WTex, vec2((i+0.5)/Mf, (state[j]+0.5)/Nf)).r;
+    int jj = state[j] %% TEXTURE_WIDTH;
+    int layer = state[j] / TEXTURE_WIDTH;
+    return texture(WTex, vec3((i+0.5)/Mf, (jj+0.5)/TEXTURE_WIDTH_F, layer)).r;
 }
 
 float V(int i) {
@@ -75,8 +79,7 @@ void main()
         for (int k = 0; k < p; k++) {
             WHi += h[k]*W(i, k);
         }
-        float Vi = V(i);
-        dot += Vi*WHi;
+        dot += V(i)*WHi;
     }
     dot /= norm;
 }
@@ -84,7 +87,7 @@ void main()
 
 
 class Observer:
-    def __init__(self, p, W, V, L):
+    def __init__(self, p, W, L):
         """
         Constructor for a class that computes observation probabilities
         quickly using moderngl
@@ -95,27 +98,31 @@ class Observer:
             Number of activations
         W: ndarray(M, N)
             Templates matrix, assumed to sum to 1 down the columns
-        V: ndarray(M, T)
-            Observations matrix
         L: int
             Number of iterations of KL
         sigma: float
             Observation noise
         """
+        ctx = moderngl.create_standalone_context()
+
         M = W.shape[0]
         N = W.shape[1]
-        T = V.shape[1]
         self.p = p
         self.W = W
-        self.V = V
         self.L = L
-        WTex = np.array((W.T).flatten(), dtype=np.float32)
-        ctx = moderngl.create_standalone_context()
-        texture = ctx.texture((M, N), 1, WTex, dtype="f4")
+
+        # Break up templates into a stack of textures
+        n_stack = int(np.ceil(N/TEXTURE_WIDTH))
+        WTex = np.zeros((n_stack, TEXTURE_WIDTH, M), dtype=np.float32)
+        for i in range(n_stack):
+            Wi = W[:, i*TEXTURE_WIDTH:(i+1)*TEXTURE_WIDTH].T
+            WTex[i, 0:Wi.shape[0], :] = Wi
+        texture = ctx.texture_array((M, TEXTURE_WIDTH, n_stack), 1, WTex, dtype="f4")
         texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
         texture.use(0)
+
         program = ctx.program(
-            vertex_shader=VERTEX_SHADER%(p, M, M, N, N, L),
+            vertex_shader=VERTEX_SHADER%(p, M, M, L, TEXTURE_WIDTH, TEXTURE_WIDTH),
             varyings=["dot"]
         )
         program['WTex'].value = 0
@@ -162,6 +169,7 @@ class Observer:
         data = struct.unpack("{}f".format(P), buffer.read())
         data = np.array(data)
         return data
+    
     
     def observe_cpu(self, states, t):
         """
