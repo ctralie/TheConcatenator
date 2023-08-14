@@ -56,7 +56,7 @@ if __name__ == '__main__':
     WL = np.abs(np.fft.fft(WSoundL, axis=0)[0:win//2+1, :])
     WR = np.abs(np.fft.fft(WSoundR, axis=0)[0:win//2+1, :])
     W = np.concatenate((WL, WR), axis=0)
-
+    
     p = opt.p
     pd = opt.pd
     temperature = opt.temperature
