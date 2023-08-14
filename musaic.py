@@ -36,6 +36,9 @@ if __name__ == '__main__':
     opt = parser.parse_args()
 
     ytarget, sr = librosa.load(opt.target, sr=opt.sr, mono=not opt.stereo)
+    if opt.stereo and len(ytarget.shape) == 1:
+        ytarget = np.array([ytarget, ytarget])
+
     print("Loading corpus...")
     ycorpus = load_corpus(opt.corpus, opt.sr, opt.stereo)
 
