@@ -81,7 +81,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
         ## Step 2: Apply the observation probability updates
         dots = []
         if use_gpu:
-            dots = observer.observe(states, t)
+            dots = observer.observe(states, V[:, t])
         else:
             dots = observer.observe_cpu(states, t)
         obs_prob = np.exp(dots*temperature/np.max(dots))

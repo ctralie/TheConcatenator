@@ -58,7 +58,7 @@ if __name__ == '__main__':
     W = np.concatenate((WL, WR), axis=0)
 
     #### TODO: This is a hack for now
-    truncate_idx = 32768 - V.shape[1]
+    truncate_idx = 32768
     T_before = W.shape[1]
     W = W[:, 0:truncate_idx]
     T_after = W.shape[1]

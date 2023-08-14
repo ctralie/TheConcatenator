@@ -9,23 +9,21 @@ VERTEX_SHADER = '''
 #define Mf  %i.0
 #define N   %i
 #define Nf  %i.0
-#define T   %i
-#define Tf  %i.0
 #define L   %i
 
 in int state[p];
 
-uniform sampler2D WV;
-uniform int t;
+uniform sampler2D WTex;
+uniform sampler2D VTex;
 
 out float dot;
 
 float W(int i, int j) {
-    return texture(WV, vec2((i+0.5)/Mf, (state[j]+0.5)/(Nf+Tf))).r;
+    return texture(WTex, vec2((i+0.5)/Mf, (state[j]+0.5)/Nf)).r;
 }
 
-float V(int i, int j) {
-    return texture(WV, vec2((i+0.5)/Mf, (Nf+j+0.5)/(Nf+Tf))).r;
+float V(int i) {
+    return texture(VTex, vec2(0.5, (i+0.5)/Mf)).r;
 }
 
 void main()
@@ -48,7 +46,7 @@ void main()
                 WHi += h[k]*W(i, k);
             }
             for (int j = 0; j < p; j++) {
-                facs[j] += W(i, j)*V(i, t)/WHi;
+                facs[j] += W(i, j)*V(i)/WHi;
             }
         }
         // Update each component of h
@@ -77,7 +75,7 @@ void main()
         for (int k = 0; k < p; k++) {
             WHi += h[k]*W(i, k);
         }
-        float Vi = V(i, t);
+        float Vi = V(i);
         dot += Vi*WHi;
     }
     dot /= norm;
@@ -111,21 +109,21 @@ class Observer:
         self.W = W
         self.V = V
         self.L = L
-        WV = np.concatenate((W, V), axis=1)
-        WV = np.array((WV.T).flatten(), dtype=np.float32)
+        WTex = np.array((W.T).flatten(), dtype=np.float32)
         ctx = moderngl.create_standalone_context()
-        texture = ctx.texture((M, N+T), 1, WV, dtype="f4")
+        texture = ctx.texture((M, N), 1, WTex, dtype="f4")
         texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
-        texture.use()
+        texture.use(0)
         program = ctx.program(
-            vertex_shader=VERTEX_SHADER%(p, M, M, N, N, T, T, L),
+            vertex_shader=VERTEX_SHADER%(p, M, M, N, N, L),
             varyings=["dot"]
         )
-        self.ut = program['t']
+        program['WTex'].value = 0
+        program['VTex'].value = 1
         self.ctx = ctx
         self.program = program
 
-    def observe(self, states, t):
+    def observe(self, states, Vt):
         """
         Compute the observation probabilities for a set of states
         at a particular time.
@@ -135,14 +133,19 @@ class Observer:
         ----------
         states: ndarray(P, p)
             Column choices in W corresponding to each particle
-        t: int
-            Time index
+        Vt: ndarray(M)
+            Observation for this time
         
         Returns
         -------
         ndarray(P)
             Observation probabilities
         """
+        VTex = np.array(Vt[:, None], dtype=np.float32)
+        VTex = self.ctx.texture((1, Vt.size), 1, VTex, dtype="f4")
+        VTex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        VTex.use(1)
+
         P = states.shape[0]
         content = [
             (
@@ -153,14 +156,12 @@ class Observer:
             )
         ]
         vao = self.ctx.vertex_array(self.program, content)
-        self.ut.value = t
 
         buffer = self.ctx.buffer(reserve=P*4)
         vao.transform(buffer, vertices=P)
         data = struct.unpack("{}f".format(P), buffer.read())
         data = np.array(data)
         return data
-    
     
     def observe_cpu(self, states, t):
         """
