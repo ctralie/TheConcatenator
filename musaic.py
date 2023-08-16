@@ -25,6 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--hopSize', type=int, default=1024, help="Hop Size in samples")
     parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
     parser.add_argument('--use_gpu', type=int, default=1, help="If 1 (default), use GPU.  If 0, use CPU")
+    parser.add_argument('--use_mel', type=int, default=0, help="If 1 use a mel-spaced spectrogram instead of a regular spectrogram")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
     parser.add_argument('--r', type=int, default=7, help="Width of the repeated activation filter")
     parser.add_argument('--p', type=int, default=10, help="Number of simultaneous activations")
@@ -48,17 +49,25 @@ if __name__ == '__main__':
     
     hop = opt.hopSize
     win = opt.winSize
+   
     W1L = get_windowed(ytarget[0, :], hop, win)
     W1R = get_windowed(ytarget[1, :], hop, win)
     VL = np.abs(np.fft.fft(W1L, axis=0)[0:win//2+1, :])
     VR = np.abs(np.fft.fft(W1R, axis=0)[0:win//2+1, :])
-    V = np.concatenate((VL, VR), axis=0)
+    if opt.use_mel:
+        M = get_mel_filterbank(win, sr, -24, 50)
+        V = np.concatenate((M.dot(VL), M.dot(VR)), axis=0)
+    else:
+        V = np.concatenate((VL[1:win//4, :], VR[1:win//4, :]), axis=0)
 
     WSoundL = get_windowed(ycorpus[0, :], hop, win)
     WSoundR = get_windowed(ycorpus[1, :], hop, win)
     WL = np.abs(np.fft.fft(WSoundL, axis=0)[0:win//2+1, :])
     WR = np.abs(np.fft.fft(WSoundR, axis=0)[0:win//2+1, :])
-    W = np.concatenate((WL, WR), axis=0)
+    if opt.use_mel:
+        W = np.concatenate((M.dot(WL), M.dot(WR)), axis=0)
+    else:
+        W = np.concatenate((WL[1:win//4, :], WR[1:win//4, :]), axis=0)
     
     p = opt.p
     pd = opt.pd
