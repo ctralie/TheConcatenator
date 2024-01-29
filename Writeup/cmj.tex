@@ -1,0 +1,159 @@
+ %
+%-----------------------------------------------------------
+%% Computer Music Journal LaTeX template
+%%
+%% September  2009
+%% Author: Cornelia Kreutzer, University of Limerick
+
+
+
+%---Document preamble
+%
+\documentclass[letterpaper, 12pt]{article}
+
+
+\usepackage{cmjStyle} %use CMJ style
+\usepackage{natbib} %natbib package, necessary for customized cmj BibTeX style
+\bibpunct{(}{)}{;}{a}{}{, } %adapt style of references in text
+\doublespacing
+\raggedright % use this to remove spacing and hyphenation oddities
+\setlength{\parskip}{2ex}
+\parindent 24pt
+\urlstyle{same} % make url tags have the same font
+\setcounter{secnumdepth}{-1} % remove section numbering
+\usepackage{epstopdf}
+\usepackage{amsmath,amssymb,amsbsy,bm,upgreek,nicefrac}
+\usepackage{todonotes,microtype}
+
+% Use the Figures subfolder for image files
+\graphicspath{{../Figures/}}
+
+
+%% ----------------------------------------------------------------------------------------------------------------------------------------
+%% CMJ page headers
+%% For initial submission use \lhead{Anonymous}
+%% On acceptance for publication, use real author surnames for \lhead modeled on the following examples
+%%		One author:	\lhead{\small Keislar}
+%%		Two authors:	\lhead{\small Keislar and Castine}
+%%		Three authors:	\lhead{\small Keislar, Castine, and Rundall}
+%%		Four or more:	\lhead{\small Keislar et al.}
+%%
+\lhead{\small Tralie and Cantil}
+
+
+%% The package endfloat moves all floats (figures, tables...) to the end of the article, as required for the final version of a CMJ article.
+%% Leave this package commented out for initial submission, but uncomment it and the following callout commands for the final version. 
+% \usepackage{endfloat}
+% \renewcommand{\figureplace}{%
+%	\begin{center}
+%		\textbf{<<TYPE: INSERT \figurename~\thepostfig\ ABOUT HERE.>>}
+%	\end{center}}
+% \renewcommand{\tableplace}{%
+%	\begin{center}
+%		\textbf{<<TYPE: INSERT \tablename~\theposttbl\ ABOUT HERE.>>}
+%	\end{center}}
+
+%---Document----------
+\begin{document}
+
+{\cmjTitle Let It Bee Realtime: A Bayesian Approach To Concatenative Musaicing}
+\vspace*{24pt}
+
+%(In the initial submission, omit all the following author information to ensure anonymity during peer review. On final submission please make sure that the author address is a complete, functioning postal address. Post will be sent to that address.)
+
+% Author: name
+{\cmjAuthor Christopher J. Tralie, Ben Cantil}	% List all authors here
+							% e.g.:
+							% {\cmjAuthor Doug Keislar, Peter Castine, and Jake Rundall}
+ 
+% Author: address
+\begin{cmjAuthorAddress}
+	Department of Mathematics And Computer Science\\
+	Ursinus College\\
+	601 East Main Street\\
+	Collegeville, PA 19426 USA\\		% Adapt as needed for non-US addresses
+	ctralie@alumni.princeton.edu
+\end{cmjAuthorAddress}
+
+
+\begin{abstract}
+
+\end{abstract}
+
+\section{Introduction}
+
+
+\section{Background}
+
+
+\subsection{Driedger's Original Technique}
+
+Describe in detail
+
+\subsection{Related Techniques}
+
+Need some references on granular synthesis.
+
+The idea of spectrogram decomposition used for concatenative musaicing goes back to the work of \cite{burred2013cross}.
+
+\cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} provide some improvements to the ``Let It Bee'' technique, including sidestepping phase retrieval, which we exploit in our work.
+
+One issue with the ``Let It Bee'' technique is the sources have to be augmented with pitch shifts to hit additional pitches in the target, increasing memory consumption and runtime.  \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D convolutive NMF \cite{schmidt2006nonnegative}, which models pitch shifts in the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for diagonal enhancement.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
+
+
+\section{Bayesian Formulation}
+
+    Given:
+    \begin{enumerate}
+        \item
+            An $M \times N$ matrix $W$ of templates
+        
+        \item
+            An $M \times 1$ observation $y_t$ at time $t$, over $T$ times
+        
+        \item
+            A parameter $p$ for the sparsity, and a $p$-dimensional hidden state variable $x$
+
+                \[ x_k \in [0, 1, ..., N-1], k = 0, 1, ..., p-1 \]
+        
+        \item
+            A parameter $p_d \in [0, 1]$ for diagonal promotion
+        
+        \item
+            Parameters $\sigma$ and $L$ for standard deviation and NMF iterations in the observation function, respectively
+        
+    \end{enumerate}
+
+        Then define the {\em state transition probability} as 
+
+		\begin{equation}
+        	p(\vec{x_i} = \vec{b} | \vec{x_{i-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b_k = a_k+1  \\ \frac{1-p_d}{N-2} & b_k \neq a_k \\ 0 & b_k = a_k \end{array} \right\}
+		\end{equation}
+
+    
+        The third case is to prevent repeated activations, but this is only enforced on adjacent frames due to the Markov property
+
+		TODO: Define the observation probability
+
+
+\section{Analysis}
+
+In practice, a limited number of particles are extremely effective at picking up on activations that fit the target well.  To see why, we can invoke a simple probabilistic argument.  Given a corpus with $N$ sound grains and $P$ particles that capture $p$ activations, suppose that the initial particles are chosen uniformly at random over the set of combinations $\binom{N}{p}$.  Then, the probability that at least one particle captures at least one of the best fitting $k$ activations is  
+
+\[ 1 - \left(\binom{N-k}{p} / \binom{N}{p}\right)^P = 1 - \left( \frac{(N-p)...(N-p-k+1)}{N..(N-k+1)}\right) ^P \]
+
+Considering just the top particle ($k=1$), we get the formula
+
+\[ 1 - \left( \frac{N-p}{N} \right)^P \]
+
+As an example, if $N = 1000$, $P = 1000$, and $p=10$, there is a probability > 0.9999 that at least one particle will contain the best activation.  For a high $p_d$, all particles containing this activation will propagate through time, and they will have higher weights than others due to better fit observations.  At some point, only these particles will have non-negligible weights and resampling will occur, at which point, by a similar argument, it is quite likely that some other good activations will be picked up (TODO: Write out the math for transitions picking things up?).
+
+TODO: Show figures for an exmaple, see logbook entry 1/29
+
+A technique in the wider literature with similar mathematical properties is the ``patch match'' technique in computer graphics \cite{Barnes:2009:PAR, Barnes:2010:TGP}.  Patch match seeks to compute nearest neighbors of many nearby patches as quickly as possible, but it similarly starts with random initializations of nearest neighbors.  Chances are that at least one of the patches will be matched to a correct neighbor, and spatially adjacent patches can have their nearest neighbors corrected to neighbors at the corresponding offsets \cite{Barnes:2009:PAR}.  This is analagous to our propagation to {\em time-adjacent} activations in subsequent timesteps.
+
+%References
+\bibliographystyle{cmj}
+\bibliography{cmjbib}
+
+\end{document}

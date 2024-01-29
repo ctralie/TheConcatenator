@@ -1,0 +1,111 @@
+%--------
+%---CMJ style file---
+%
+%
+%% Filename: cmjStyle.sty 
+%% Version 1.1.1, February 2014
+%% Author: Cornelia Kreutzer, University of Limerick; Torsten Anders, University of Plymouth
+%% Style to use for preparing manuscripts for the Computer Music Journal (CMJ)
+%% based on the submission guidelines and a sample .tex file
+%% Updates by PC to better match what production at MIT Press generally expects.
+%
+
+%%%%
+%%%% IMPORTANT: The CMJ Template no longer needs different .sty files for PDF and dvips drivers
+%%%%			   LaTeX can automatically determine which driver is being used and copes automatically
+%%%%
+%%%% 			   That said, if you're using dvipdfm, you'll need a custom .sty file, editing the \RequirePackage{hpyerref} directive
+%%%%			   Please let us know about this when making your final submission. Otherwise your source won't compile.
+%%%%
+
+\typeout{LaTeX Style file for paper submissions for the Computer Music Journal --- February 2017, Version 1.1.1}
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cmjStyle}[2014/02/14 CMJ LaTeX package Version 1.1.1]
+
+%load other required packages and classes
+\RequirePackage{amsmath,amssymb,amsfonts,amsthm}
+\RequirePackage{subcaption,color}
+\RequirePackage{euscript}
+\RequirePackage[latin1]{inputenc}
+\RequirePackage[T1]{fontenc}
+\RequirePackage{wrapfig}
+\RequirePackage{palatino}
+\RequirePackage[margin=1in]{geometry}
+\RequirePackage{epsfig,graphicx}
+\RequirePackage[
+    colorlinks=false, % no color links
+    bookmarksnumbered, % use section numbers with bookmarks
+    pdfstartview=XYZ % start with zoom=100% instead of full screen
+  ]{hyperref}
+\RequirePackage[figure,table]{hypcap}
+\RequirePackage{setspace} 
+\RequirePackage{float}
+\RequirePackage[labelsep=period, font=it, justification=raggedright, singlelinecheck=off]{caption} % format figure captions
+\captionsetup[table]{font=bf,position=below} % for CMJ-style Table Headings
+\RequirePackage{fancyvrb} % format for programming code
+
+%% ----------------------------------------------------------------------------------------------------------------------------------------
+%% CMJ page headers
+\RequirePackage{fancyhdr}
+\pagestyle{fancy}
+\chead{}
+\rhead{\small \thepage}
+\lfoot{\small \emph{Computer Music Journal}}
+\cfoot{}
+\rfoot{\small \today}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\headheight}{14pt} 
+
+%---Author/Title
+%assume the author/title definitions could be done more elegant by adapting the \maketitle command, but this is a start
+%
+%author and address
+\newcommand{\cmjAuthor}{\flushleft}
+\newcommand{\cmjAuthorPhone}{\bf}
+\newenvironment{cmjAuthorAddress}
+{\hangindent=\parindent%
+\ignorespaces}
+{\par%
+\ignorespacesafterend}
+
+%
+%style for title
+\newcommand{\cmjTitle}{\flushleft\LARGE\bf\fontfamily{phv}\selectfont}
+
+% %---Headings
+% %
+% %Heading-A, used for major section headings
+% \newcommand{\cmjHeadingA}{\flushleft\Large\bf\fontfamily{phv}\selectfont}
+% %Heading-B, used for subsection headings
+% \newcommand{\cmjHeadingB}{\flushleft\large\bf\selectfont}
+% %Heading-C, used for minor sub-subsection headings
+% \newcommand{\cmjHeadingC}{\flushleft\it\selectfont}
+
+% %callouts for figures (for the final versions of the paper, after being accepted)
+% \newcommand{\cmjFigureCallout}{\indent}
+
+
+%% Instead of introducing \cmjHeadingA etc use the standard Latex commands like \section and friends.
+%% See page 29 of The LaTeX Companion, second edition.
+%%
+%% TODO: adapt the spacing between lines of headings running over multiple lines
+\renewcommand\section{\@startsection
+  {section}{1}{0mm}%name, level, indent  
+  {0mm} %             beforeskip e.g., {-\baselineskip} {-3.5ex \@plus -1ex \@minus -.2ex}
+  {0.001mm} %            afterskip e.g.  {0.5\baselineskip} {2.3ex \@plus.2ex} {0mm}
+  {\Large\bfseries\fontfamily{phv}\selectfont}}% style, e.g., {\normalfont\normalsize\itshape}
+\renewcommand\subsection{\@startsection
+  {subsection}{2}{0mm}%name, level, indent
+  {0mm}%             beforeskip
+  {0.001mm}%            afterskip
+  {\large\bf\selectfont}}% style
+\renewcommand\subsubsection{\@startsection
+  {subsubsection}{3}{0mm}%name, level, indent
+  {0mm}%             beforeskip
+  {0.001mm}%            afterskip
+  {\it\selectfont}}% style
+
+
+% Please do not delete the following line. It is here for a reason. Better still, don't use footnotes.-)
+\renewcommand{\footnote}[1]{\textbf{CMJ Style does not allow footnotes.} (#1)}
+
