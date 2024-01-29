@@ -86,6 +86,28 @@ def get_diag_lengths(H, p):
             diags.append(k-j)
     return np.array(diags, dtype=int)
 
+def count_top_activations(states, top_idxs):
+    """
+    Count how many of the top activations each particle has
+
+    Parameters
+    ----------
+    states: ndarray(P, p)
+        Column choices in W corresponding to each particle
+    top_idxs: ndarray(pfinal)
+        Final activations that were chosen
+    
+    Returns
+    -------
+    ndarray(P)
+        Number of top activations in each particle
+    """
+    P = states.shape[0]
+    res = np.zeros(P)
+    for idx in top_idxs:
+        res += np.sum(states == idx, axis=1)
+    return res
+
 def get_random_combination(N, p):
     """
     Choose p elements out of N possible elements in {0, 1, ..., N-1}

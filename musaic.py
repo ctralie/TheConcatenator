@@ -80,13 +80,14 @@ if __name__ == '__main__':
     if p == 1:
         print("Finished setting up corpus; doing Bayes filter for p=1")
         tic = time.time()
-        H, wsmax, neff = get_bayes_musaic_activations(V, W, p, pd, temperature, L, r)
+        H, stats = get_bayes_musaic_activations(V, W, p, pd, temperature, L, r)
         print("Elapsed time bayes filter: {:.3f}".format(time.time()-tic))
     else:
         print("Finished setting up corpus; doing particle filter")
         tic = time.time()
-        H, wsmax, neff = get_particle_musaic_activations(V, W, p, p, pd, temperature, L, P, r=r, neff_thresh=neff_thresh, use_gpu=(opt.use_gpu==1))
+        H, stats = get_particle_musaic_activations(V, W, p, p, pd, temperature, L, P, r=r, neff_thresh=neff_thresh, use_gpu=(opt.use_gpu==1))
         print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))
+    wsmax, neff = stats["wsmax"], stats["neff"]
 
     active_diffs = get_activations_diff(H, p)
     repeated_intervals = get_repeated_activation_itervals(H, p)

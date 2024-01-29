@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.spatial import KDTree
-from probutils import stochastic_universal_sample, do_KL
+from probutils import stochastic_universal_sample, do_KL, count_top_activations
 from observer import Observer
 from propagator import Propagator
 
@@ -67,8 +67,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
     ws = np.ones(P)/P
     H = np.zeros((N, T))
     chosen_idxs = np.zeros((pfinal, T), dtype=int)
-    neff = np.zeros(T)
-    wsmax = np.zeros(T)
+    stats = {"neff":np.zeros(T), "wsmax":np.zeros(T), "ws":np.zeros((T, P)), "topcounts":np.zeros((T, P))}
     for t in range(T):
         if t%10 == 0:
             print(".", end="", flush=True)
@@ -90,7 +89,7 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
-        wsmax[t] = np.max(ws)
+        stats["wsmax"][t] = np.max(ws)
         probs = np.zeros(N)
         max_particles = np.argpartition(-ws, 2*p)[0:2*p]
         for state, w in zip(states[max_particles], ws[max_particles]):
@@ -107,10 +106,15 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
         chosen_idxs[:, t] = top_idxs
         H[top_idxs, t] = do_KL(W[:, top_idxs], V[:, t], L)
         
-        ## Step 4: Resample particles
+        ## Step 3b: Count how many of the top activations each particle has
+        stats["topcounts"][t, :] = count_top_activations(states, top_idxs)
+
+        
+        ## Step 4: Resample particles if effective number is too low
         ws /= np.sum(ws)
-        neff[t] = 1/np.sum(ws**2)
-        if neff[t] < neff_thresh:
+        stats["ws"][t, :] = ws
+        stats["neff"][t] = 1/np.sum(ws**2)
+        if stats["neff"][t] < neff_thresh:
             choices, _ = stochastic_universal_sample(ws, len(ws))
             states = states[choices, :]
             ws = np.ones(ws.size)/ws.size
@@ -125,4 +129,4 @@ def get_particle_musaic_activations(V, W, p, pfinal, pd, temperature, L, P, gamm
                 proposal_idxs = np.array(tree.query_ball_point(Vt/VtNorm, d), dtype=int)+1
                 proposal_idxs = proposal_idxs[proposal_idxs < N]
 
-    return H, wsmax, neff
+    return H, stats
