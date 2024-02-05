@@ -28,7 +28,7 @@ if __name__ == '__main__':
     parser.add_argument('--particles', type=int, default=2000, help="Number of particles in the particle filter")
     parser.add_argument('--gamma', type=float, default=0, help="Cosine similarity cutoff for proposal distribution")
     parser.add_argument('--temperature', type=float, default=100, help="Target importance.  Higher values mean activations will jump around more to match the target.")
-    parser.add_argument('--saveplots', type=int, default=0, help='Save plots of iterations to disk')
+    parser.add_argument('--saveplots', type=int, default=1, help='Save plots of iterations to disk')
     opt = parser.parse_args()
 
     ytarget, sr = librosa.load(opt.target, sr=opt.sr, mono=not opt.stereo)
@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
     wavfile.write(opt.result, sr, pf.get_generated_audio())
 
-    if opt.saveplots:
+    if opt.saveplots == 1:
         import matplotlib.pyplot as plt
         plt.figure(figsize=(12, 8))
         pf.plot_statistics()

@@ -66,8 +66,8 @@ class ParticleFilter:
         WSoundR = get_windowed(ycorpus[1, :], hop, win, hann_window)
         self.WSoundL = WSoundL
         self.WSoundR = WSoundR
-        WL = np.abs(np.fft.fft(WSoundL, axis=0)[0:win//2+1, :])
-        WR = np.abs(np.fft.fft(WSoundR, axis=0)[0:win//2+1, :])
+        WL = np.abs(np.fft.rfft(WSoundL, axis=0))
+        WR = np.abs(np.fft.rfft(WSoundR, axis=0))
         WCorpus = np.concatenate((WL[1:win//4, :], WR[1:win//4, :]), axis=0)
         self.WCorpus = WCorpus
 
@@ -107,7 +107,7 @@ class ParticleFilter:
             Activations of the corpus over time
         """
         from scipy import sparse
-        N = self.WCorpus.shape[0]
+        N = self.WCorpus.shape[1]
         p = self.states.shape[1]
         T = len(self.H)
         vals = np.array(self.H).flatten()
@@ -122,12 +122,14 @@ class ParticleFilter:
 
         Returns
         -------
-        ndarray(2, n_samples)
+        ndarray(n_samples, 2)
             Generated audio
         """
         T = len(self.chosen_idxs)
         hop = self.win//2
-        return self.buf_out[:, 0:T*hop]
+        ret = self.buf_out[:, 0:T*hop]
+        ret /= np.max(np.abs(ret))
+        return ret.T
 
     def audio_in(self, s, frame_count=None, time_info=None, status=None):
         """
@@ -180,6 +182,9 @@ class ParticleFilter:
         x: ndarray(2, win)
             Window to process
         """
+        if len(self.H)%10 == 0:
+            print(".", end="", flush=True)
+
         tic = time.time()
         p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
