@@ -140,7 +140,7 @@ class Observer:
         ----------
         states: ndarray(P, p)
             Column choices in W corresponding to each particle
-        Vt: ndarray(M)
+        Vt: ndarray(M, 1)
             Observation for this time
         
         Returns
@@ -148,7 +148,7 @@ class Observer:
         ndarray(P)
             Observation probabilities
         """
-        VTex = np.array(Vt[:, None], dtype=np.float32)
+        VTex = np.array(Vt, dtype=np.float32)
         VTex = self.ctx.texture((1, Vt.size), 1, VTex, dtype="f4")
         VTex.filter = (moderngl.NEAREST, moderngl.NEAREST)
         VTex.use(1)
@@ -171,7 +171,7 @@ class Observer:
         return data
     
     
-    def observe_cpu(self, states, t):
+    def observe_cpu(self, states, Vt):
         """
         Compute the observation probabilities for a set of states
         at a particular time.
@@ -181,8 +181,8 @@ class Observer:
         ----------
         states: ndarray(P, p)
             Column choices in W corresponding to each particle
-        t: int
-            Time index
+        Vt: ndarray(M, 1)
+            Observation for this time
         
         Returns
         -------
@@ -191,7 +191,6 @@ class Observer:
         """
         from probutils import do_KL
         P = states.shape[0]
-        Vt = self.V[:, t]
         Vi = np.zeros((Vt.shape[0], P))
 
         for i in range(P):
@@ -204,4 +203,4 @@ class Observer:
         ViNorms[ViNorms == 0] = 1
         Vi /= ViNorms[None, :]
 
-        return np.sum(Vt[:, None]*Vi, axis=0)
+        return np.sum(Vt*Vi, axis=0)

@@ -95,6 +95,7 @@ def get_musaic_activations(V, W, L, r=3, p=10, c=3, verbose=False):
 
 
 def create_musaic_sliding(V, WSound, W, win, hop, slidewin, L, r=3, p=10, c=3):
+    from audioutils import do_windowed_sum
     nwin = V.shape[1]-slidewin+1
     y = np.zeros(V.shape[1]*hop+win)
     for j in range(nwin):
