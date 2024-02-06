@@ -10,13 +10,19 @@ import struct
 import time
 
 class ParticleFilter:
-    def __init__(self, ycorpus, win, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True, use_mic=False):
+    def __init__(self, ycorpus, win, sr, min_freq, max_freq, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True, use_mic=False):
         """
-        ycorpus: ndarray(2, n_samples)
+        ycorpus: ndarray(n_channels, n_samples)
             Stereo audio samples for the corpus
         win: int
             Window length for each STFT window.  For simplicity, assume
             that hop is 1/2 of this
+        sr: int
+            Audio sample rate
+        min_freq: float
+            Minimum frequency to use (in hz)
+        max_freq: float
+            Maximum frequency to use (in hz)
         p: int
             Sparsity parameter for particles
         pfinal: int
@@ -51,6 +57,10 @@ class ParticleFilter:
         self.use_gpu = use_gpu
         self.use_mic = use_mic
         self.win = win
+        self.sr = sr
+        self.kmin = max(0, int(win*min_freq/sr)+1)
+        self.kmax = min(int(win*max_freq/sr)+1, win//2)
+        print(self.kmin, self.kmax)
         hop = win//2
 
         self.neff = [] # Number of effective particles over time
@@ -62,13 +72,10 @@ class ParticleFilter:
         self.H = [] # Activations of chosen indices
 
         ## Step 1: Compute spectrogram for corpus
-        WSoundL = get_windowed(ycorpus[0, :], hop, win, hann_window)
-        WSoundR = get_windowed(ycorpus[1, :], hop, win, hann_window)
-        self.WSoundL = WSoundL
-        self.WSoundR = WSoundR
-        WL = np.abs(np.fft.rfft(WSoundL, axis=0))
-        WR = np.abs(np.fft.rfft(WSoundR, axis=0))
-        WCorpus = np.concatenate((WL[1:win//4, :], WR[1:win//4, :]), axis=0)
+        n_channels = ycorpus.shape[0]
+        self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
+        Ws = [np.abs(np.fft.rfft(W, axis=0)[self.kmin:self.kmax, :]) for W in self.WSound]
+        WCorpus = np.concatenate(tuple(Ws), axis=0)
         self.WCorpus = WCorpus
 
         ## Step 2: Setup KDTree for proposal indices if requested
@@ -92,9 +99,15 @@ class ParticleFilter:
         self.fit = 0 # KL fit
 
         ## Step 4: Setup a circular buffer that receives hop samples at a time
-        self.buf_in  = np.zeros((2, win))
+        self.buf_in  = np.zeros((n_channels, win))
         # Setup an output buffer that doubles in size like an arraylist
-        self.buf_out = np.zeros((2, win))
+        self.buf_out = np.zeros((n_channels, sr*60*10))
+
+        ## Step 5: If we're using the mic, set that up
+        if use_mic:
+            audio = pyaudio.PyAudio()
+            ## TODO: Finish this
+            
 
     def get_H(self):
         """
@@ -144,6 +157,7 @@ class ParticleFilter:
         frame_count: int
             If using mic, it should be win//2 samples
         """
+        tic = time.time()
         if self.use_mic:
             fmt = "<"+"h"*frame_count
             x = struct.unpack(fmt, s)
@@ -154,6 +168,9 @@ class ParticleFilter:
         self.buf_in[:, 0:hop] = self.buf_in[:, hop:]
         self.buf_in[:, hop:] = x
         self.process_window(self.buf_in)
+        # Record elapsed time
+        elapsed = time.time()-tic
+        self.frame_times.append(elapsed)
     
     def audio_out(self, x):
         """
@@ -182,12 +199,12 @@ class ParticleFilter:
 
         Parameters
         ----------
-        ytarget: ndarray(2, T)
+        ytarget: ndarray(n_channels, T)
             Audio samples to process
 
         Returns
         -------
-        ndarray(n_samples, 2)
+        ndarray(n_samples, n_channels)
             Generated audio
         """
         hop = self.win//2
@@ -197,18 +214,16 @@ class ParticleFilter:
     
     def process_window(self, x):
         """
-        x: ndarray(2, win)
+        x: ndarray(n_channels, win)
             Window to process
         """
         if len(self.H)%10 == 0:
             print(".", end="", flush=True)
-
-        tic = time.time()
+        
         p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
-        VL = np.abs(np.fft.rfft(self.win_samples*x[0, :]))[1:self.win//4]
-        VR = np.abs(np.fft.rfft(self.win_samples*x[1, :]))[1:self.win//4]
-        Vt = np.concatenate((VL, VR))[:, None]
+        Vs = [np.abs(np.fft.rfft(self.win_samples*x[i, :], axis=0)[self.kmin:self.kmax]) for i in range(x.shape[0])]
+        Vt = np.concatenate(tuple(Vs))[:, None]
         self.propagator.propagate_numba(self.states)
 
         ## Step 2: Apply the observation probability updates
@@ -253,17 +268,14 @@ class ParticleFilter:
         
         ## Step 5: Create and output audio samples for this window
         y = np.zeros_like(x)
-        y[0, :] = self.WSoundL[:, top_idxs].dot(h)
-        y[1, :] = self.WSoundR[:, top_idxs].dot(h)
+        for i in range(x.shape[0]):
+            y[i, :] = self.WSound[i][:, top_idxs].dot(h)
         self.audio_out(y)
 
         ## Step 6: Accumulate KL term for fit
         WH = self.WCorpus[:, top_idxs].dot(h)
         Vt = Vt.flatten()
         self.fit += np.sum(Vt*np.log(Vt/WH) - Vt + WH)
-
-        # Record elapsed time
-        self.frame_times.append(time.time()-tic)
 
     def plot_statistics(self):
         """

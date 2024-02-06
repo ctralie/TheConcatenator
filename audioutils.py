@@ -139,7 +139,7 @@ def load_corpus(path, sr, stereo):
     
     Returns
     -------
-    ndarray(N) if mono, ndarray(2, N) if stereo
+    ndarray(n_channels, n_samples)
         The audio samples
     """
     import glob
@@ -165,4 +165,6 @@ def load_corpus(path, sr, stereo):
         x = np.concatenate(samples, axis=1)
     else:
         x = np.concatenate(samples)
+    if len(x.shape) == 1:
+        x = x[None, :]
     return x
