@@ -45,12 +45,10 @@ if __name__ == '__main__':
     print("Finished setting up corpus; doing particle filter")
     tic = time.time()
     pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, p=opt.p, pfinal=opt.p, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, use_gpu=(opt.use_gpu==1))
-    hop = opt.winSize//2
-    for i in range(0, ytarget.shape[1]//hop):
-        pf.audio_in(ytarget[:, i*hop:(i+1)*hop])
+    ygen = pf.process_audio_offline(ytarget)
     print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))
 
-    wavfile.write(opt.result, sr, pf.get_generated_audio())
+    wavfile.write(opt.result, sr, ygen)
 
     if opt.saveplots == 1:
         import matplotlib.pyplot as plt

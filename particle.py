@@ -176,6 +176,24 @@ class ParticleFilter:
         # Ready to output hop more samples
         ## TODO: Fill this in
         
+    def process_audio_offline(self, ytarget):
+        """
+        Process audio audio offline, frame by frame
+
+        Parameters
+        ----------
+        ytarget: ndarray(2, T)
+            Audio samples to process
+
+        Returns
+        -------
+        ndarray(n_samples, 2)
+            Generated audio
+        """
+        hop = self.win//2
+        for i in range(0, ytarget.shape[1]//hop):
+            self.audio_in(ytarget[:, i*hop:(i+1)*hop])
+        return self.get_generated_audio()
     
     def process_window(self, x):
         """
