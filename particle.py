@@ -60,7 +60,6 @@ class ParticleFilter:
         self.sr = sr
         self.kmin = max(0, int(win*min_freq/sr)+1)
         self.kmax = min(int(win*max_freq/sr)+1, win//2)
-        print(self.kmin, self.kmax)
         hop = win//2
 
         self.neff = [] # Number of effective particles over time
@@ -73,6 +72,7 @@ class ParticleFilter:
 
         ## Step 1: Compute spectrogram for corpus
         n_channels = ycorpus.shape[0]
+        self.n_channels = n_channels
         self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
         Ws = [np.abs(np.fft.rfft(W, axis=0)[self.kmin:self.kmax, :]) for W in self.WSound]
         WCorpus = np.concatenate(tuple(Ws), axis=0)
@@ -99,16 +99,28 @@ class ParticleFilter:
         self.fit = 0 # KL fit
 
         ## Step 4: Setup a circular buffer that receives hop samples at a time
-        self.buf_in  = np.zeros((n_channels, win))
+        self.buf_in  = np.zeros((n_channels, win), dtype=np.float32)
         # Setup an output buffer that doubles in size like an arraylist
-        self.buf_out = np.zeros((n_channels, sr*60*10))
+        self.buf_out = np.zeros((n_channels, sr*60*10), dtype=np.float32)
 
         ## Step 5: If we're using the mic, set that up
         if use_mic:
             audio = pyaudio.PyAudio()
-            ## TODO: Finish this
-            
-
+            stream = audio.open(format=pyaudio.paFloat32, 
+                                frames_per_buffer=hop, 
+                                channels=n_channels, 
+                                rate=sr, 
+                                output=True, 
+                                input=True, 
+                                stream_callback=self.audio_in)
+            stream.start_stream()
+            while stream.is_active():
+                time.sleep(5)
+                stream.stop_stream()
+                print("Stream is stopped")
+            stream.close()
+            audio.terminate()
+    
     def get_H(self):
         """
         Convert chosen_idxs and H into a numpy array with 
@@ -141,7 +153,8 @@ class ParticleFilter:
         T = len(self.chosen_idxs)
         hop = self.win//2
         ret = self.buf_out[:, 0:T*hop]
-        ret /= np.max(np.abs(ret))
+        if ret.size > 0:
+            ret /= np.max(np.abs(ret))
         return ret.T
 
     def audio_in(self, s, frame_count=None, time_info=None, status=None):
@@ -159,9 +172,10 @@ class ParticleFilter:
         """
         tic = time.time()
         if self.use_mic:
-            fmt = "<"+"h"*frame_count
-            x = struct.unpack(fmt, s)
-            x = np.array(x, dtype=float)/32768
+            nc = self.n_channels
+            fmt = "<"+"f"*(self.n_channels*self.win//2)
+            x = np.array(struct.unpack(fmt, s), dtype=np.float32)
+            x = np.reshape(x, (x.size//nc, nc)).T
         else:
             x = s
         hop = self.win//2
@@ -171,6 +185,8 @@ class ParticleFilter:
         # Record elapsed time
         elapsed = time.time()-tic
         self.frame_times.append(elapsed)
+        ret = (self.buf_out[:, 0:hop].T).flatten()
+        return struct.pack("<"+"f"*ret.size, *ret), pyaudio.paContinue
     
     def audio_out(self, x):
         """
@@ -185,13 +201,12 @@ class ParticleFilter:
         N = self.buf_out.shape[1]
         if N < (T+1)*hop:
             # Double size
-            new_out = np.zeros((2, N*2))
+            new_out = np.zeros((2, N*2), dtype=np.float32)
             new_out[:, 0:N] = self.buf_out
             self.buf_out = new_out
         idx = hop*(T-1) # Start index
         self.buf_out[:, idx:idx+win] += x
-        # Ready to output hop more samples
-        ## TODO: Fill this in
+        # Now ready to output hop more samples
         
     def process_audio_offline(self, ytarget):
         """

@@ -35,14 +35,14 @@ if __name__ == '__main__':
     ycorpus = load_corpus(opt.corpus, sr=opt.sr, stereo=(opt.stereo==1))
 
     print("Finished setting up corpus; doing particle filter")
-    tic = time.time()
     pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, sr=opt.sr, min_freq=opt.minFreq, max_freq=opt.maxFreq, p=opt.p, pfinal=opt.p, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, use_gpu=(opt.use_gpu==1), use_mic=(opt.target=="mic"))
     if not opt.target == "mic":
         ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo==1))
-        ygen = pf.process_audio_offline(ytarget)
-    print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))
-
-    wavfile.write(opt.result, opt.sr, ygen)
+        tic = time.time()
+        pf.process_audio_offline(ytarget)
+        print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))    
+    wavfile.write(opt.result, opt.sr, pf.get_generated_audio())
+    
 
     if opt.saveplots == 1:
         import matplotlib.pyplot as plt
