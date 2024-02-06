@@ -259,6 +259,7 @@ class ParticleFilter:
 
         ## Step 6: Accumulate KL term for fit
         WH = self.WCorpus[:, top_idxs].dot(h)
+        Vt = Vt.flatten()
         self.fit += np.sum(Vt*np.log(Vt/WH) - Vt + WH)
 
         # Record elapsed time
