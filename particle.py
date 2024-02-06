@@ -112,7 +112,7 @@ class ParticleFilter:
         T = len(self.H)
         vals = np.array(self.H).flatten()
         rows = np.array(self.chosen_idxs, dtype=int).flatten()
-        cols = np.array(np.ones((p, 1))*np.arange(T)[None, :], dtype=int).flatten()
+        cols = np.array(np.ones((1, p))*np.arange(T)[:, None], dtype=int).flatten()
         H = sparse.coo_matrix((vals, (rows, cols)), shape=(N, T))
         return H.toarray()
     
