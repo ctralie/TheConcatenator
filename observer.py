@@ -196,7 +196,7 @@ class Observer:
         for i in range(P):
             ## Step 3: Apply observation update
             Wi = self.W[:, states[i]]
-            hi = do_KL(Wi, Vt, self.L)
+            hi = do_KL(Wi, Vt[:, 0], self.L)
             Vi[:, i] = Wi.dot(hi).flatten()
         
         ViNorms = np.sqrt(np.sum(Vi**2, axis=0))
