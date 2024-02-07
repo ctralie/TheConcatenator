@@ -8,6 +8,7 @@ from audioutils import get_windowed, hann_window
 import pyaudio
 import struct
 import time
+from threading import Lock
 
 class ParticleFilter:
     def __init__(self, ycorpus, win, sr, min_freq, max_freq, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True, use_mic=False):
@@ -105,6 +106,8 @@ class ParticleFilter:
 
         ## Step 5: If we're using the mic, set that up
         if use_mic:
+            self.mutex = Lock()
+            self.processing_frame = False
             audio = pyaudio.PyAudio()
             stream = audio.open(format=pyaudio.paFloat32, 
                                 frames_per_buffer=hop, 
@@ -172,6 +175,17 @@ class ParticleFilter:
         """
         tic = time.time()
         if self.use_mic:
+            return_early = False
+            with self.mutex:
+                if self.processing_frame:
+                    # We're already in the middle of processing a frame,
+                    # so pass the audio through
+                    return_early = True
+                else:
+                    self.processing_frame = True
+            if return_early:
+                print("Returning early", flush=True)
+                return s, pyaudio.paContinue
             nc = self.n_channels
             fmt = "<"+"f"*(self.n_channels*self.win//2)
             x = np.array(struct.unpack(fmt, s), dtype=np.float32)
@@ -186,6 +200,8 @@ class ParticleFilter:
         elapsed = time.time()-tic
         self.frame_times.append(elapsed)
         ret = (self.buf_out[:, 0:hop].T).flatten()
+        with self.mutex:
+            self.processing_frame = False
         return struct.pack("<"+"f"*ret.size, *ret), pyaudio.paContinue
     
     def audio_out(self, x):
