@@ -3,6 +3,8 @@ Programmer: Chris Tralie
 Purpose: To serve as an entry point for my new musaicing technique
 """
 import argparse
+import sys
+sys.path.append("src")
 from audioutils import load_corpus
 from particle import ParticleFilter
 import time

@@ -200,8 +200,9 @@ class ParticleFilter:
         elapsed = time.time()-tic
         self.frame_times.append(elapsed)
         ret = (self.buf_out[:, 0:hop].T).flatten()
-        with self.mutex:
-            self.processing_frame = False
+        if self.use_mic:
+            with self.mutex:
+                self.processing_frame = False
         return struct.pack("<"+"f"*ret.size, *ret), pyaudio.paContinue
     
     def audio_out(self, x):
