@@ -1,5 +1,6 @@
 class AudioCorpus {
-    constructor(sr, nChannels, domStr, progressBar) {
+    constructor(sr, nChannels, domStr, progressBar, gui) {
+        // Overall audio parameters
         this.sr = sr;
         this.nChannels = nChannels;
         const domElement = document.getElementById(domStr);
@@ -8,7 +9,40 @@ class AudioCorpus {
         this.audioContext = new AudioContext({sampleRate:this.sr});
         this.audioSamples = {};
 
+        // DSP Parameters
+        this.win = 2048;
+        this.minFreq = 50;
+        this.maxFreq = 10000;
+
+        this.initializeMenus(gui);
         this.setupDOM();
+    }
+
+    initializeMenus(gui) {
+        this.gui = gui;
+        gui.add(this, "win", 128, 8192).onChange(
+            function(v) {
+                let val = Math.round(Math.log(v)/Math.log(2));
+                val = Math.pow(2, val);
+                that.win = val;
+            }
+        );
+        gui.add(this, "minFreq", 50, 22050).onChange(
+            function(v) {
+                if (v > this.maxFreq) {
+                    this.maxFreq = v;
+                }
+            }
+        );
+        gui.add(this, "maxFreq", 50, 22050).onChange(
+            function(v) {
+                if (v < this.minFreq) {
+                    this.minFreq = v;
+                }
+            }
+        );
+
+        gui.close();
     }
 
     setupDOM() {
@@ -68,6 +102,6 @@ class AudioCorpus {
 
         // Step 4: Create input handler for a folder
         //TODO: Fill this in
-        
+        // https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/webkitdirectory
     }
 }

@@ -110,3 +110,12 @@ class SampledAudio {
   }
 
 }
+
+class StreamingAudio {
+  constructor(audioContext, sr, nChannels) {
+    this.nChannels = nChannels;
+    this.channels = [];
+    this.audioContext = audioContext;
+    this.sr = sr;
+  }
+}

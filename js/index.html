@@ -14,6 +14,32 @@
     <script src="wav.js"></script>
     <script src="audio.js"></script>
     <script src="corpus.js"></script>
+    <script>
+      var Module = {
+        onRuntimeInitialized: function() {
+          let win = 2048;
+          let sr = 44100;
+          let minFreq = 50;
+          let maxFreq = 10000;
+          let p = 10;
+          let pFinal = p;
+          let P = 2000;
+          let temperature = 100;
+          let L = 10;
+          let r = 7;
+          let pd = 0.99;
+
+          let pf = new Module.ParticleFilter(win, sr, minFreq, maxFreq, p, pFinal, P, pd, temperature, L, r);
+          let particles = Module.HEAP32.subarray(pf.particles >> 2);
+          for (let i = 0; i < 10; i++) {
+            for (let j = 0; j < p; j++) {
+              console.log("("+i+","+j+")", particles[i*p+j]);
+            }
+          }
+        }
+      }
+    </script>
+    <script src="particle.js"></script>
   </head>
   <body>
     <h1>The Concatenator 🎵</h1>
