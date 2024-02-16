@@ -2,6 +2,7 @@
 
 using namespace emscripten;
 
+#include <iostream>
 #include <complex>
 #include <vector>
 #include <math.h>
@@ -43,14 +44,6 @@ class DSP {
 		 * @param fftsize The length of the fft
 		 */
 		void initWindow(int fftsize);
-
-		/**
-		 * Perform an in-place Cooley-Tukey FFT
-		 * @param toReturn Array that holds FFT coefficients
-		 * @param N Length of array (assumed to be power of 2)
-		 * @param inverse Whether this is a forward or inverse FFT
-		 */
-		void performfft(cfloat* toReturn, int N, int inverse);
 	
 	public:
 		cfloat fftres;
@@ -65,6 +58,14 @@ class DSP {
 		 * @return Complex DFT coefficients
 		 */
 		void dft(cfloat* sig, cfloat* toReturn, int N);
+
+		/**
+		 * Perform an in-place Cooley-Tukey FFT
+		 * @param toReturn Array that holds FFT coefficients
+		 * @param N Length of array (assumed to be power of 2)
+		 * @param inverse Whether this is a forward or inverse FFT
+		 */
+		void performfft(cfloat* toReturn, int N, int inverse);
 
 		/**
 		 * Perform the FFT on a complex signal
@@ -406,6 +407,13 @@ void deleteSTFT(cfloat** S, int NWin) {
 	delete[] S;
 }
 
+
+
+///////////////////////////////////////////////////////////////////////////////
+//                      Particle Filter Code                                 //
+///////////////////////////////////////////////////////////////////////////////
+
+
 /**
  * A circular buffer for keeping track of the last activations to have been chosen
 */
@@ -453,18 +461,83 @@ class LastChosen {
 };
 
 
-///////////////////////////////////////////////////////////////////////////////
-//                      Particle Filter Code                                 //
-///////////////////////////////////////////////////////////////////////////////
+/**
+ * Encapsulate a mono circular buffer for reading in audio quantums
+ * and processing hop lengths of audio at a time
+*/
+class AudioInBuffer {
+	private:
+		int win;
+		DSP* dsp;
+		float* hann;
+
+		int quantum;
+		cfloat* buff;
+		cfloat* hannbuff; // Hann windowed copy of the buffer that's used  
+		int offset; // Offset in samples of the circular shift
+
+
+	public:
+		/**
+		 * @param{int} win: Window length (length of circular buffer)
+		 * @param{int} quantum: Audio quantum. Should divide win/2, where we're assuming that the hop length is exactly half of the window length
+		*/
+		AudioInBuffer(int win, int quantum) {
+			this->win = win;
+			this->quantum = quantum;
+			buff = new cfloat[win];
+			int offset = 0;
+			dsp = new DSP(win);
+			hann = getHannWindow(win);
+		}
+
+		/**
+		 * Push a quantum of samples into the buffer
+		 * 
+		 * @param{float*} Pointer to quantum number of samples
+		*/
+		void pushQuantum(float* samples) {
+			for (int i = 0; i < quantum; i++) {
+				buff[offset+i] = samples[i];
+			}
+			offset = (offset + quantum) % win;
+		}
+
+		bool hopReady() {
+			return offset % (win/2) == 0;
+		}
+
+		/**
+		 * @param{float*} res: Array in which to store (kmax-kmin+1) magnitude frequencies
+		 * @param{int} kmin: Minimum frequency bin to take in FFT
+		 * @param{int} kmax: Maximum frequency bin to take in FFT 
+		*/
+		void performFFT(float* res, int kmin, int kmax) {
+			if (!hopReady()) {
+				std::cout << "Warning: Doing FFT before an entire hop chunk has been read in";
+			}
+			for (int i = 0; i < win; i++) {
+				hannbuff[i] = cfloat(hann[i]*buff[(i+offset)%win]);
+			}
+			dsp->performfft(hannbuff, win, FFT_FORWARD);
+			for (int i = kmin; i <= kmax; i++) {
+				res[i-kmin] = abs(hannbuff[i]);
+			}
+		}
+
+		~AudioInBuffer() {
+			delete[] hann;
+			delete dsp;
+			delete[] buff;
+			delete[] hannbuff;
+		}
+};
+
 class ParticleFilter {
 	private:
 		std::vector<float> allAudio; // Keep track of all generated audio
 		int win;
 		int sr;
-		int kmin;
-		int kmax;
-		DSP* dsp;
-		float* hann;
 
 		int* particles;
 		float* weights;
@@ -480,19 +553,28 @@ class ParticleFilter {
 		int r;
 		float neffThresh;
 
+		int nChannels;
+		AudioInBuffer** inBuffers;
+		float* Vt;
+
 
 	public:
+		int kmin;
+		int kmax;
+
 		// Make public pointers to shared buffers
 		uintptr_t particlesShare;
+		uintptr_t VtShare;
 		
 
 		
 		/**
 		 * ParticleFilter constructor
 		 * 
-		 * @param  {int} win           : Window length for each STFT window.  For simplicity, assume
-            that hop is 1/2 of this
+		 * @param  {int} win           : Window length for each STFT window.  For simplicity, assume that hop is 1/2 of this
+		 * @param  {int} quantum       : Audio quantum. Should divide win/2, where we're assuming that the hop length is exactly half of the window length
 		 * @param  {int} sr            : Audio sample rate
+		 * @param  {int} nChannels     : Number of audio channels
 		 * @param  {float} minFreq     : Minimum frequency to use (in hz)
 		 * @param  {float} maxFreq     : Maximum frequency to use (in hz)
 		 * @param  {int} p             : Sparsity parameter for particles
@@ -503,7 +585,7 @@ class ParticleFilter {
 		 * @param  {int} L             : Number of iterations for NMF observation probabilities
 		 * @param  {int} r             : Repeated activations cutoff
 		 */
-		ParticleFilter(int win, int sr, float minFreq, float maxFreq, int p, int pFinal, int P, float pd, float temperature, int L, int r) {
+		ParticleFilter(int win, int quantum, int sr, int nChannels, float minFreq, float maxFreq, int p, int pFinal, int P, float pd, float temperature, int L, int r) {
 			this->win = win;
 			this->sr = sr;
 			this->p = p;
@@ -513,6 +595,7 @@ class ParticleFilter {
 			this->temperature = temperature;
 			this->L = L;
 			this->r = r;
+			this->nChannels = nChannels;
 			neffThresh = 0.1*((float)P);
 			
 			// Step 1: Setup buffers and windows
@@ -521,34 +604,39 @@ class ParticleFilter {
 			if (kmax > win/2) {
 				kmax = win/2;
 			}
-			dsp = new DSP(win);
-			hann = getHannWindow(win);
 			lastChosen = new LastChosen(pFinal, r);
+			this->nChannels = nChannels;
+			inBuffers = new AudioInBuffer*[nChannels];
+			for (int i = 0; i < nChannels; i++) {
+				inBuffers[i] = new AudioInBuffer(win, quantum);
+			}
+			Vt = new float[(kmax-kmin+1)*nChannels];
+			VtShare = (uintptr_t)Vt;
 
-
-			// Step 2: Allocate particles
+			// Step 2: Allocate particles randomly
 			particles = new int[P*p];
 			particlesShare = (uintptr_t)particles;
+			// TODO: Finish this
 
 		}
 
 		~ParticleFilter() {
 			delete lastChosen;
 			delete[] particles;
-			delete[] hann;
-			delete dsp;
-
+			for (int i = 0; i < nChannels; i++) {
+				delete inBuffers[i];
+			}
+			delete[] inBuffers;
+			delete[] Vt;
 		}
 };
 
-EMSCRIPTEN_BINDINGS(stl_wrappers) {
-    emscripten::register_vector<float>("VectorFloat"); // For Audio samples
-	emscripten::register_vector<std::vector<int>>("VectorVectorInt"); // For particles
-}
-
 EMSCRIPTEN_BINDINGS(my_module) {
     class_<ParticleFilter>("ParticleFilter")
-		.constructor<int, int, float, float, int, int, int, float, float, int, int>()
+		.constructor<int, int, int, int, float, float, int, int, int, float, float, int, int>()
 		.property("particles", &ParticleFilter::particlesShare)
+		.property("Vt", &ParticleFilter::VtShare)
+		.property("kmin", &ParticleFilter::kmin)
+		.property("kmax", &ParticleFilter::kmax)
 		;
 }
