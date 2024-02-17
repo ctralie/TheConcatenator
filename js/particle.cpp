@@ -5,6 +5,7 @@ using namespace emscripten;
 #include <iostream>
 #include <complex>
 #include <vector>
+#include <mutex>
 #include <math.h>
 
 
@@ -473,8 +474,9 @@ class AudioInBuffer {
 
 		int quantum;
 		cfloat* buff;
-		cfloat* hannbuff; // Hann windowed copy of the buffer that's used  
 		int offset; // Offset in samples of the circular shift
+		std::mutex buffLock;
+		cfloat* hannBuff; // Hann windowed copy of the buffer that's used
 
 
 	public:
@@ -487,6 +489,7 @@ class AudioInBuffer {
 			this->quantum = quantum;
 			buff = new cfloat[win];
 			int offset = 0;
+			hannBuff = new cfloat[win];
 			dsp = new DSP(win);
 			hann = getHannWindow(win);
 		}
@@ -497,17 +500,27 @@ class AudioInBuffer {
 		 * @param{float*} Pointer to quantum number of samples
 		*/
 		void pushQuantum(float* samples) {
-			for (int i = 0; i < quantum; i++) {
-				buff[offset+i] = samples[i];
-			}
+			buffLock.lock();
+			std::memcpy(buff+offset, samples, quantum*sizeof(float));
 			offset = (offset + quantum) % win;
-		}
-
-		bool hopReady() {
-			return offset % (win/2) == 0;
+			buffLock.unlock();
 		}
 
 		/**
+		 * Return true if enough quantums have been pushed to fill up
+		 * hop samples, and which point an FFT is ready to go
+		*/
+		bool hopReady() {
+			bool ret = 0;
+			buffLock.lock();
+			ret = offset % (win/2) == 0;
+			buffLock.unlock();
+			return ret;
+		}
+
+		/**
+		 * Perform the FFT on the buffer in its current state
+		 * 
 		 * @param{float*} res: Array in which to store (kmax-kmin+1) magnitude frequencies
 		 * @param{int} kmin: Minimum frequency bin to take in FFT
 		 * @param{int} kmax: Maximum frequency bin to take in FFT 
@@ -516,12 +529,14 @@ class AudioInBuffer {
 			if (!hopReady()) {
 				std::cout << "Warning: Doing FFT before an entire hop chunk has been read in";
 			}
+			buffLock.lock();
 			for (int i = 0; i < win; i++) {
-				hannbuff[i] = cfloat(hann[i]*buff[(i+offset)%win]);
+				hannBuff[i] = cfloat(hann[i]*buff[(i+offset)%win]);
 			}
-			dsp->performfft(hannbuff, win, FFT_FORWARD);
+			buffLock.unlock();
+			dsp->performfft(hannBuff, win, FFT_FORWARD);
 			for (int i = kmin; i <= kmax; i++) {
-				res[i-kmin] = abs(hannbuff[i]);
+				res[i-kmin] = abs(hannBuff[i]);
 			}
 		}
 
@@ -529,21 +544,91 @@ class AudioInBuffer {
 			delete[] hann;
 			delete dsp;
 			delete[] buff;
-			delete[] hannbuff;
+			delete[] hannBuff;
+		}
+};
+
+/*
+* Store a buffer of increasing size for the audio that's being outputted.
+* Double the buffer size if we run out of space
+* Keep track of an index at which audio quantums are being read out, as well
+* as an index at which new window are to be placed
+*/
+class AudioOutBuffer {
+	private:
+		int N; // Current size of buffer
+		int quantum; // Quantum size
+		int q; // Location of quantum
+		int win; // Window length
+		int w; // Pointer to current window location
+
+		float* samples;
+		std::mutex samplesLock;
+		float* hann;
+
+		void doubleCapacity() {
+			samplesLock.lock();
+			float* newSamples = new float[N*2];
+			delete[] samples;
+			samples = newSamples;
+			N *= 2;
+			samplesLock.unlock();
+		}
+
+	public:
+		AudioOutBuffer(int win, int sr, int quantum) {
+			N = sr*60; // Start out with 60 seconds worth of audio in the buffer
+			samples = new float[N];
+			this->quantum = quantum;
+			q = 0;
+			this->win = win;
+			w = win/2; // Start off with a latency of hop, so output all 0's for the first hop (TODO: Can play with this)
+			hann = getHannWindow(win);
+		}
+
+		/**
+		 * Add a new window of samples on top of what's already there,
+		 * applying a Hann window
+		 * 
+		 * @param{float*} newSamples: New window to be added in
+		*/
+		void addWindow(float* newSamples) {
+			if (w + win > N) {
+				doubleCapacity();
+			}
+			samplesLock.lock();
+			for (int i = 0; i < win; i++) {
+				samples[w+i] += hann[i]*newSamples[i];
+			}
+			w += win/2; // Shift over by a hop
+			samplesLock.unlock();
+		}
+
+		/**
+		 * Copy the next quantum of audio to an out location
+		*/
+		void readNextQuantum(float* out) {
+			samplesLock.lock();
+			memcpy(out, samples+q, quantum);
+			q++;
+			if (q > w) {
+				std::cout << "Warning: buffer not filling quickly enough to output audio quantum";
+			}
+			samplesLock.unlock();
+		}
+
+		~AudioOutBuffer() {
+			delete[] samples;
+			delete[] hann;
 		}
 };
 
 class ParticleFilter {
 	private:
-		std::vector<float> allAudio; // Keep track of all generated audio
-		int win;
-		int sr;
-
+		// Particle and particle parameters
 		int* particles;
 		float* weights;
-
 		LastChosen* lastChosen;// Circular buffer of last choices
-
 		int p;
 		int pFinal;
 		int P;
@@ -553,8 +638,13 @@ class ParticleFilter {
 		int r;
 		float neffThresh;
 
+		// Audio/feature buffers
+		int win;
+		int sr;
 		int nChannels;
-		AudioInBuffer** inBuffers;
+		AudioInBuffer**  inBuffers;
+		AudioOutBuffer** outBuffers;
+		float* audioOut; // The most recent quantum of audio that's ready to go out
 		float* Vt;
 
 
@@ -565,8 +655,7 @@ class ParticleFilter {
 		// Make public pointers to shared buffers
 		uintptr_t particlesShare;
 		uintptr_t VtShare;
-		
-
+		uintptr_t audioOutShare;
 		
 		/**
 		 * ParticleFilter constructor
@@ -606,10 +695,14 @@ class ParticleFilter {
 			}
 			lastChosen = new LastChosen(pFinal, r);
 			this->nChannels = nChannels;
-			inBuffers = new AudioInBuffer*[nChannels];
+			inBuffers =  new AudioInBuffer*[nChannels];
+			outBuffers = new AudioOutBuffer*[nChannels];
 			for (int i = 0; i < nChannels; i++) {
-				inBuffers[i] = new AudioInBuffer(win, quantum);
+				inBuffers[i] =  new AudioInBuffer(win, quantum);
+				outBuffers[i] = new AudioOutBuffer(win, sr, quantum);
 			}
+			audioOut = new float[quantum];
+			audioOutShare = (uintptr_t)audioOut;
 			Vt = new float[(kmax-kmin+1)*nChannels];
 			VtShare = (uintptr_t)Vt;
 
@@ -620,13 +713,33 @@ class ParticleFilter {
 
 		}
 
+		/**
+		 * Add an audio quantum to the input buffer for one of the channels
+		 * 
+		 * @param{float} samples: The audio samples to incorporate
+		 * @param{int} ch: Which channel we're adding the samples to
+		 * 
+		 * @return True if the next hop samples are ready
+		*/
+		bool inputAudioQuantum(float* samples, int ch) {
+			inBuffers[ch]->pushQuantum(samples);
+			return inBuffers[ch]->hopReady();
+		}
+
+		// TODO: Fill in methods that do different steps of the particle filter
+
+
+
 		~ParticleFilter() {
 			delete lastChosen;
 			delete[] particles;
+			delete[] audioOut;
 			for (int i = 0; i < nChannels; i++) {
 				delete inBuffers[i];
+				delete outBuffers[i];
 			}
 			delete[] inBuffers;
+			delete[] outBuffers;
 			delete[] Vt;
 		}
 };
@@ -634,8 +747,10 @@ class ParticleFilter {
 EMSCRIPTEN_BINDINGS(my_module) {
     class_<ParticleFilter>("ParticleFilter")
 		.constructor<int, int, int, int, float, float, int, int, int, float, float, int, int>()
+		.function("inputAudioQuantum", &ParticleFilter::inputAudioQuantum, allow_raw_pointers())
 		.property("particles", &ParticleFilter::particlesShare)
 		.property("Vt", &ParticleFilter::VtShare)
+		.property("audioOut", &ParticleFilter::audioOutShare)
 		.property("kmin", &ParticleFilter::kmin)
 		.property("kmax", &ParticleFilter::kmax)
 		;
