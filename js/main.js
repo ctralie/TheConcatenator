@@ -29,8 +29,8 @@ async function recordAudio(audioCtx, opt) {
     let particleWorker = new Worker("particleworker.js");
     particleWorker.postMessage({"action":"initialize", "opt":opt});
     particleWorker.onmessage = function(event) {
-        if (event.data.action == "output") {
-            console.log("outputting", event.data.output[0].length);
+        if (event.data.action == "postQuanta") {
+            audioIOProcessor.port.postMessage({"action":"pushQuanta", "output":event.data.output})
         }
     }
 
@@ -39,6 +39,10 @@ async function recordAudio(audioCtx, opt) {
     audioIOProcessor.port.onmessage = function(event) {
         if (event.data.action == "inputQuanta") {
             particleWorker.postMessage({"action":"inputQuanta", "input":event.data.input});
+        }
+        else if (event.data.action == "pullQuanta") {
+            // Audio processor is requesting a new output quantum
+            particleWorker.postMessage({"action":"readQuanta"});
         }
     }
     

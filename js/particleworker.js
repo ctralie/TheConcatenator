@@ -9,7 +9,7 @@ const DEFAULT_PARTICLE_OPTIONS =
     quantum:128,
     win:2048,
     sr:44100,
-    nChannels:2,
+    nChannels:1,
     minFreq:50,
     maxFreq:10000,
     p:10,
@@ -71,29 +71,36 @@ class ParticleFilter {
 
     inputQuanta(input) {
         if (this.initialized) {
-            for (let ch = 0; ch < this.numChannels; ch++) {
-                this.quantaIn[ch].set(input[ch]);
+            for (let ch = 0; ch < this.nChannels; ch++) {
+                this.quantaIn[0].set(input[ch%input.length]);
             }
             const hopReady = this.module.inputNextQuanta(this.module.quantaInShare);
             if (hopReady) {
                 this.module.addWindows();
             }
+        }
+        else {
+            console.log("Warning: trying to input audio quanta before particle filter object is instantiated");
+        }
+    }
+
+    readQuanta() {
+        if (this.initialized) {
             this.module.readNextQuanta(this.module.quantaOutShare);
             const quantum = this.quantum;
             let output = [];
             // TODO: It's annoying that I have to copy over audio sample by sample
             // because I couldn't get the buffer copying to work, but this does not
-            // seem to be the bottleneck
+            // seem to be a bottleneck
+            let sum = 0;
             for (let i = 0; i < this.nChannels; i++) {
                 output.push(new Float32Array(quantum));
                 for (let k = 0; k < quantum; k++) {
                     output[i][k] = this.quantaOut[i][k];
+                    sum += this.quantaOut[i][k];
                 }
-            };
-            postMessage({"action":"output", "output":output});
-        }
-        else {
-            console.log("Warning: trying to input audio quantums before particle filter object is instantiated");
+            }
+            postMessage({"action":"postQuanta", "output":output});
         }
     }
 }
@@ -107,7 +114,7 @@ onmessage = function(event) {
     if (event.data.action == "inputQuanta") {
         pf.inputQuanta(event.data.input);
     }
-    if (event.data.action == "requestQuantum") {
-        pf.readQuantum();
+    if (event.data.action == "readQuanta") {
+        pf.readQuanta();
     }
 }

@@ -624,8 +624,9 @@ class AudioOutBuffer {
 		*/
 		void readNextQuantum(float* out) {
 			samplesLock.lock();
+			//std::cout << "q:" << q << ", w: " << w << ", samples[0]: " << samples[0] << "\n";
 			memcpy(out, samples+q, quantum);
-			q++;
+			q += quantum;
 			if (q > w) {
 				std::cout << "Warning: buffer not filling quickly enough to output audio quantum";
 			}
@@ -754,6 +755,7 @@ class ParticleFilter {
 		*/
 		bool inputNextQuanta(uintptr_t psamples) {
 			float* samples = (float*)psamples;
+			//std::cout << "inputNextQuanta samples[0]: " << samples[0] << "\n";
 			for (int ch = 0; ch < nChannels; ch++) {
 				inBuffers[ch]->pushQuantum(samples + ch*quantum);
 			}
@@ -771,6 +773,7 @@ class ParticleFilter {
 			for (int ch = 0; ch < nChannels; ch++) {
 				outBuffers[ch]->readNextQuantum(samples + ch*quantum);
 			}
+			//std::cout << "readNextQuanta samples[0]: " << samples[0] << "\n";
 		}
 
 		// TODO: Fill in methods that do different steps of the particle filter
@@ -782,7 +785,7 @@ class ParticleFilter {
 		void addWindows() {
 			// Do the FFT just to test timing
 			float* res = new float[win];
-			std::cout << "Doing fft\n";
+			//std::cout << "Doing fft\n";
 			for (int ch = 0; ch < nChannels; ch++) {
 				inBuffers[ch]->performFFT(res, kmin, kmax);
 				inBuffers[ch]->copyWindow(res);
