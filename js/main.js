@@ -5,35 +5,55 @@ let progressBar = new ProgressBar();
 //audio.loadFile("../corpus/theoshift.mp3");
 
 
-async function recordAudio(audioCtx, hop) {
-  let stream;
-  let particleAudioProcessor;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({audio:true});
-  } catch (e) {
-    console.log("Error opening audio: " + e);
-  }
-  try {
-    await audioCtx.audioWorklet.addModule("particleaudioworklet.js");
-    particleAudioProcessor = new AudioWorkletNode(audioCtx, "particle-worklet-processor",
-      {
-        processorOptions: {
-          hop: hop
-        }
-      }
-    );
 
-  } catch(e) {
-    console.log("Error loading particle worklet processor: " + e);
-  }
-  const source = audioCtx.createMediaStreamSource(stream);
-  source.connect(particleAudioProcessor);
-  particleAudioProcessor.connect(audioCtx.destination);
+async function recordAudio(audioCtx, opt) {
+    // Step 1: Setup audio streamer
+    let stream;
+    let audioIOProcessor;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    } catch (e) {
+        console.log("Error opening audio: " + e);
+    }
+    try {
+        await audioCtx.audioWorklet.addModule("audioioworklet.js");
+        audioIOProcessor = new AudioWorkletNode(audioCtx, "audio-io-worklet");
+    } catch(e) {
+        console.log("Error loading particle worklet processor: " + e);
+    }
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(audioIOProcessor);
+    audioIOProcessor.connect(audioCtx.destination);
+
+    // Step 2: Setup particle worker and connect to audioIOProcessor
+    let particleWorker = new Worker("particleworker.js");
+    particleWorker.postMessage({"action":"initialize", "opt":opt});
+    particleWorker.onmessage = function(event) {
+        if (event.data.action == "output") {
+            console.log("outputting", event.data.output[0].length);
+        }
+    }
+
+    // Step 3: Finish setting up worker that processes particles, as well
+    // as code to pass audio samples between that worker and the audio worklet
+    audioIOProcessor.port.onmessage = function(event) {
+        if (event.data.action == "inputQuanta") {
+            particleWorker.postMessage({"action":"inputQuanta", "input":event.data.input});
+        }
+    }
+    
+
+
+
 
 }
 
-//const audioCtx = new AudioContext();
-//recordAudio(audioCtx, 1024);
+
+const audioCtx = new AudioContext();
+recordAudio(audioCtx);
+
+
+
 /*
 navigator.mediaDevices
     .getUserMedia({audio:true})

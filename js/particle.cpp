@@ -6,6 +6,8 @@ using namespace emscripten;
 #include <complex>
 #include <vector>
 #include <mutex>
+#include <cstdlib>
+#include <ctime>
 #include <math.h>
 
 
@@ -473,7 +475,7 @@ class AudioInBuffer {
 		float* hann;
 
 		int quantum;
-		cfloat* buff;
+		float* buff;
 		int offset; // Offset in samples of the circular shift
 		std::mutex buffLock;
 		cfloat* hannBuff; // Hann windowed copy of the buffer that's used
@@ -487,7 +489,7 @@ class AudioInBuffer {
 		AudioInBuffer(int win, int quantum) {
 			this->win = win;
 			this->quantum = quantum;
-			buff = new cfloat[win];
+			buff = new float[win];
 			int offset = 0;
 			hannBuff = new cfloat[win];
 			dsp = new DSP(win);
@@ -538,6 +540,19 @@ class AudioInBuffer {
 			for (int i = kmin; i <= kmax; i++) {
 				res[i-kmin] = abs(hannBuff[i]);
 			}
+		}
+
+		/**
+		 * This method is for debugging; we usually only need the FFT
+		 * of samples
+		 * res: Array in which to store win samples
+		*/
+		void copyWindow(float* res) {
+			buffLock.lock();
+			for (int i = 0; i < win; i++) {
+				res[i] = hann[i]*buff[(i+offset)%win];
+			}
+			buffLock.unlock();
 		}
 
 		~AudioInBuffer() {
@@ -640,13 +655,25 @@ class ParticleFilter {
 
 		// Audio/feature buffers
 		int win;
+		int quantum;
 		int sr;
 		int nChannels;
 		AudioInBuffer**  inBuffers;
 		AudioOutBuffer** outBuffers;
-		float* audioOut; // The most recent quantum of audio that's ready to go out
 		float* Vt;
+		float* quantaIn;
+		float* quantaOut;
 
+
+	void initializeRandomParticles() {
+		// TODO: Finish this; use proper corpus size
+		std::srand(std::time(NULL));
+		particles = new int[P*p];
+		particlesShare = (uintptr_t)particles;
+		for (int i = 0; i < P*p; i++) {
+			particles[i] = std::rand() / ((RAND_MAX + 1u) / 100);
+		}
+	}
 
 	public:
 		int kmin;
@@ -655,7 +682,8 @@ class ParticleFilter {
 		// Make public pointers to shared buffers
 		uintptr_t particlesShare;
 		uintptr_t VtShare;
-		uintptr_t audioOutShare;
+		uintptr_t quantaInShare;
+		uintptr_t quantaOutShare;
 		
 		/**
 		 * ParticleFilter constructor
@@ -676,6 +704,7 @@ class ParticleFilter {
 		 */
 		ParticleFilter(int win, int quantum, int sr, int nChannels, float minFreq, float maxFreq, int p, int pFinal, int P, float pd, float temperature, int L, int r) {
 			this->win = win;
+			this->quantum = quantum;
 			this->sr = sr;
 			this->p = p;
 			this->pFinal = pFinal;
@@ -701,39 +730,76 @@ class ParticleFilter {
 				inBuffers[i] =  new AudioInBuffer(win, quantum);
 				outBuffers[i] = new AudioOutBuffer(win, sr, quantum);
 			}
-			audioOut = new float[quantum];
-			audioOutShare = (uintptr_t)audioOut;
 			Vt = new float[(kmax-kmin+1)*nChannels];
 			VtShare = (uintptr_t)Vt;
+			quantaIn = new float[quantum*nChannels];
+			quantaInShare = (uintptr_t)quantaIn;
+			quantaOut = new float[quantum*nChannels];
+			quantaOutShare = (uintptr_t)quantaOut;
 
 			// Step 2: Allocate particles randomly
-			particles = new int[P*p];
-			particlesShare = (uintptr_t)particles;
+			this->initializeRandomParticles();
+			
 			// TODO: Finish this
 
 		}
 
 		/**
-		 * Add an audio quantum to the input buffer for one of the channels
+		 * Add an audio quantum to the input buffer of each channel
 		 * 
-		 * @param{float} samples: The audio samples to incorporate
-		 * @param{int} ch: Which channel we're adding the samples to
+		 * @param{uintptr_t} psamples: A pointer to the audio samples to incorporate,
+		 * 						      where the channels are stored back to back
 		 * 
 		 * @return True if the next hop samples are ready
 		*/
-		bool inputAudioQuantum(float* samples, int ch) {
-			inBuffers[ch]->pushQuantum(samples);
-			return inBuffers[ch]->hopReady();
+		bool inputNextQuanta(uintptr_t psamples) {
+			float* samples = (float*)psamples;
+			for (int ch = 0; ch < nChannels; ch++) {
+				inBuffers[ch]->pushQuantum(samples + ch*quantum);
+			}
+			return inBuffers[0]->hopReady();
+		}
+
+		/**
+		 * Read out the next quantum of audio samples for each channel, concatenated
+		 * one after another channel-wise in memory
+		 * 
+		 * @param{uintptr_t} psamples: A pointer to where the samples should be written
+		*/
+		void readNextQuanta(uintptr_t psamples) {
+			float* samples = (float*)psamples;
+			for (int ch = 0; ch < nChannels; ch++) {
+				outBuffers[ch]->readNextQuantum(samples + ch*quantum);
+			}
 		}
 
 		// TODO: Fill in methods that do different steps of the particle filter
+		
+		/**
+		 * This method is for debugging; it will be replaced by a method that performs
+		 * a particle filter
+		*/
+		void addWindows() {
+			// Do the FFT just to test timing
+			float* res = new float[win];
+			std::cout << "Doing fft\n";
+			for (int ch = 0; ch < nChannels; ch++) {
+				inBuffers[ch]->performFFT(res, kmin, kmax);
+				inBuffers[ch]->copyWindow(res);
+				outBuffers[ch]->addWindow(res);
+			}
+			delete[] res;
+		}
+
+		void printHello() {
+			std::cout << "Hello!\n";
+		}
 
 
 
 		~ParticleFilter() {
 			delete lastChosen;
 			delete[] particles;
-			delete[] audioOut;
 			for (int i = 0; i < nChannels; i++) {
 				delete inBuffers[i];
 				delete outBuffers[i];
@@ -741,16 +807,22 @@ class ParticleFilter {
 			delete[] inBuffers;
 			delete[] outBuffers;
 			delete[] Vt;
+			delete[] quantaIn;
+			delete[] quantaOut;
 		}
 };
 
 EMSCRIPTEN_BINDINGS(my_module) {
     class_<ParticleFilter>("ParticleFilter")
 		.constructor<int, int, int, int, float, float, int, int, int, float, float, int, int>()
-		.function("inputAudioQuantum", &ParticleFilter::inputAudioQuantum, allow_raw_pointers())
-		.property("particles", &ParticleFilter::particlesShare)
-		.property("Vt", &ParticleFilter::VtShare)
-		.property("audioOut", &ParticleFilter::audioOutShare)
+		.function("inputNextQuanta", &ParticleFilter::inputNextQuanta, allow_raw_pointers())
+		.function("readNextQuanta", &ParticleFilter::readNextQuanta, allow_raw_pointers())
+		.function("addWindows", &ParticleFilter::addWindows)
+		.function("printHello", &ParticleFilter::printHello)
+		.property("particlesShare", &ParticleFilter::particlesShare)
+		.property("VtShare", &ParticleFilter::VtShare)
+		.property("quantaInShare", &ParticleFilter::quantaInShare)
+		.property("quantaOutShare", &ParticleFilter::quantaOutShare)
 		.property("kmin", &ParticleFilter::kmin)
 		.property("kmax", &ParticleFilter::kmax)
 		;
