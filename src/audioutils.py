@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 hann_window = lambda N: 0.5*(1 - np.cos(2*np.pi*np.arange(N)/N))
 
@@ -13,7 +14,7 @@ def blackman_harris_window(N):
     
     Returns
     -------
-    ndarray(N): Samples of the window
+    np.tensor(N): Samples of the window
     """
     a0 = 0.35875
     a1 = 0.48829
@@ -21,55 +22,6 @@ def blackman_harris_window(N):
     a3 = 0.01168
     t = np.arange(N)/N
     return a0 - a1*np.cos(2*np.pi*t) + a2*np.cos(4*np.pi*t) - a3*np.cos(6*np.pi*t)
-
-def get_mel_filterbank(win_length, sr, pmin, pmax, psub=3, normalize=False):
-    """
-    Compute a mel-spaced filterbank
-    
-    Parameters
-    ----------
-    win_length: int
-        Window length (should be around 2*K)
-    sr: int
-        The sample rate, in hz
-    pmin: int
-        Note number of lowest note
-    pmax: int
-        Note number of the highest note
-    psub: int
-        Number of subdivisions per halfstep
-    normalize: bool
-        If true, normalize the rows
-    
-    Returns
-    -------
-    ndarray(pmax-pmin+1, K)
-        The triangular mel filterbank
-    """
-    K = win_length//2 + 1
-    n_bins = (pmax-pmin+1)*psub
-    ps = np.linspace(pmin, pmax+1, n_bins+2)
-    freqs = 440*(2**(ps/12))
-    print("Min Freq: {:.3f}, Max Freq: {:.3f}".format(freqs[0], freqs[-1]))
-    bins = freqs*win_length/sr
-    bins = np.array(np.round(bins), dtype=int)
-    Mel = np.zeros((n_bins, K))
-    for i in range(n_bins):
-        i1 = bins[i]
-        i2 = bins[i+1]
-        if i1 == i2:
-            i2 += 1
-        i3 = bins[i+2]
-        if i3 <= i2:
-            i3 = i2+1
-        tri = np.zeros(K)
-        tri[i1:i2] = np.linspace(0, 1, i2-i1)
-        tri[i2:i3] = np.linspace(1, 0, i3-i2)
-        Mel[i, :] = tri
-    if normalize:
-        Norm = np.sum(Mel, axis=1)
-        Mel = Mel/Norm[:, None]
-    return Mel
 
 def get_windowed(x, hop, win, win_fn=hann_window):
     """
@@ -87,21 +39,15 @@ def get_windowed(x, hop, win, win_fn=hann_window):
 
     Returns
     -------
-    ndarray(win, n_windows)
+    torch.tensor(win, n_windows)
         Windowed audio
     """
     nwin = int(np.ceil((x.size-win)/hop))+1
     S = np.zeros((win, nwin))
-    coeff = win_fn(win)
     for j in range(nwin):
         xj = x[hop*j:hop*j+win]
-        # Zeropad if necessary
-        if len(xj) < win:
-            xj = np.concatenate((xj, np.zeros(win-len(xj))))
-        # Apply window function
-        xj = coeff*xj
-        S[:, j] = xj
-    return S
+        S[0:xj.size, :] = xj
+    return S*win_fn(win)[:, None]
 
 def do_windowed_sum(WSound, H, win, hop):
     """
@@ -109,17 +55,17 @@ def do_windowed_sum(WSound, H, win, hop):
 
     Parameters
     ----------
-    WSound: ndarray(win_length, K) 
+    WSound: torch.tensor(win_length, K) 
         An win x K matrix of template sounds in some time order along the second axis
-    H: ndarray(K, N)
+    H: torch.tensor(K, N)
         Activations matrix
     win: int
         Window length
     hop: int
         Hop length
     """
-    yh = WSound.dot(H)
-    y = np.zeros(yh.shape[1]*hop+win)
+    yh = torch.matmul(WSound, H)
+    y = torch.zeros(yh.shape[1]*hop+win).to(yh)
     for j in range(yh.shape[1]):
         y[j*hop:j*hop+win] += yh[:, j]
     return y
@@ -140,7 +86,8 @@ def load_corpus(path, sr, stereo):
     Returns
     -------
     ndarray(n_channels, n_samples)
-        The audio samples
+        The audio samples (leave as numpy so the user can choose
+        the right torch types later)
     """
     import glob
     import os

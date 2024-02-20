@@ -1,7 +1,8 @@
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
-from probutils import stochastic_universal_sample, do_KL, count_top_activations, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
+from probutils import stochastic_universal_sample, do_KL_torch, count_top_activations, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
 from observer import Observer
 from propagator import Propagator
 from audioutils import get_windowed, hann_window
@@ -11,7 +12,7 @@ import time
 from threading import Lock
 
 class ParticleFilter:
-    def __init__(self, ycorpus, win, sr, min_freq, max_freq, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, use_gpu=True, use_mic=False):
+    def __init__(self, ycorpus, win, sr, min_freq, max_freq, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, device="cpu", use_mic=False):
         """
         ycorpus: ndarray(n_channels, n_samples)
             Stereo audio samples for the corpus
@@ -42,12 +43,13 @@ class ParticleFilter:
             Repeated activations cutoff
         neff_thresh: float
             Number of effective particles below which to resample
-        use_gpu: bool
-            Whether to use the gpu for the observation probabilities
+        device: string
+            Device string for torch
         use_mic: bool
             If true, use the microphone
         """
-        self.win_samples = hann_window(win)
+        self.win_samples = np.array(hann_window(win), dtype=np.float32)
+        self.win_samples = torch.from_numpy(self.win_samples).to(device)
         self.pfinal = pfinal
         self.pd = pd
         self.temperature = temperature
@@ -55,7 +57,7 @@ class ParticleFilter:
         self.gamma = gamma
         self.r = r
         self.neff_thresh = neff_thresh
-        self.use_gpu = use_gpu
+        self.device = device
         self.use_mic = use_mic
         self.win = win
         self.sr = sr
@@ -74,12 +76,15 @@ class ParticleFilter:
         ## Step 1: Compute spectrogram for corpus
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
+        ycorpus = torch.from_numpy(np.array(ycorpus, dtype=np.float32)).to(device)
         self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
-        Ws = [np.abs(np.fft.rfft(W, axis=0)[self.kmin:self.kmax, :]) for W in self.WSound]
-        WCorpus = np.concatenate(tuple(Ws), axis=0)
+        Ws = [torch.abs(torch.fft.rfft(W, dim=0)[self.kmin:self.kmax, :]) for W in self.WSound]
+        WCorpus = torch.concatenate(tuple(Ws), axis=0)
         self.WCorpus = WCorpus
 
         ## Step 2: Setup KDTree for proposal indices if requested
+        """
+        ## TODO: Finish this (useful for huuuuge corpuses)
         self.proposal_tree = None
         if gamma > 0:
             WMag = np.sqrt(np.sum(WCorpus.T**2, axis=1))
@@ -87,15 +92,16 @@ class ParticleFilter:
             WNorm = WCorpus.T/WMag[:, None] # Vector normalized version for KDTree
             self.proposal_tree = KDTree(WNorm)
             self.proposal_d = 2*(1-gamma)**0.5 # KDTree distance corresponding to gamma cosine similarity
+        """
         
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
-        WDenom = np.sum(WCorpus, axis=0)
+        WDenom = torch.sum(WCorpus, dim=0, keepdims=True)
         WDenom[WDenom == 0] = 1
         self.observer = Observer(p, WCorpus/WDenom, L)
         self.propagator = Propagator(N, pd)
-        self.states = np.random.randint(N, size=(P, p)) # Particles
-        self.ws = np.ones(P)/P # Particle weights
+        self.states = torch.randint(N, size=(P, p), dtype=torch.int32).to(device) # Particles
+        self.ws = (torch.ones(P)/P).to(ycorpus) # Particle weights
         self.all_ws = []
         self.fit = 0 # KL fit
 
@@ -138,8 +144,8 @@ class ParticleFilter:
         N = self.WCorpus.shape[1]
         p = self.states.shape[1]
         T = len(self.H)
-        vals = np.array(self.H).flatten()
-        rows = np.array(self.chosen_idxs, dtype=int).flatten()
+        vals = np.array([h.cpu().numpy() for h in self.H]).flatten()
+        rows = np.array([c.cpu().numpy() for c in self.chosen_idxs], dtype=int).flatten()
         cols = np.array(np.ones((1, p))*np.arange(T)[:, None], dtype=int).flatten()
         H = sparse.coo_matrix((vals, (rows, cols)), shape=(N, T))
         return H.toarray()
@@ -199,7 +205,10 @@ class ParticleFilter:
         # Record elapsed time
         elapsed = time.time()-tic
         self.frame_times.append(elapsed)
-        ret = (self.buf_out[:, 0:hop].T).flatten()
+        # Output the audio that's ready
+        T = len(self.chosen_idxs)
+        idx = hop*(T-1) # Start index
+        ret = (self.buf_out[:, idx:idx+hop].T).flatten()
         if self.use_mic:
             with self.mutex:
                 self.processing_frame = False
@@ -252,28 +261,25 @@ class ParticleFilter:
         if len(self.H)%10 == 0:
             print(".", end="", flush=True)
         
+        x = torch.from_numpy(np.array(x, dtype=np.float32)).to(self.device)
         p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
-        Vs = [np.abs(np.fft.rfft(self.win_samples*x[i, :], axis=0)[self.kmin:self.kmax]) for i in range(x.shape[0])]
-        Vt = np.concatenate(tuple(Vs))[:, None]
-        self.propagator.propagate_numba(self.states)
+        Vs = [torch.abs(torch.fft.rfft(self.win_samples*x[i, :])[self.kmin:self.kmax]) for i in range(x.shape[0])]
+        Vt = torch.concatenate(Vs).unsqueeze(-1)
+        self.propagator.propagate(self.states)
 
         ## Step 2: Apply the observation probability updates
-        dots = []
-        if self.use_gpu:
-            dots = self.observer.observe(self.states, Vt)
-        else:
-            dots = self.observer.observe_cpu(self.states, Vt)
-        obs_prob = np.exp(dots*self.temperature/np.max(dots))
-        obs_prob /= np.sum(obs_prob)
+        dots = self.observer.observe(self.states, Vt)
+        obs_prob = torch.exp(dots*self.temperature/torch.max(dots))
+        obs_prob /= torch.sum(obs_prob)
         self.ws *= obs_prob
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
-        self.wsmax.append(np.max(self.ws))
+        self.wsmax.append(torch.max(self.ws).item())
         N = self.WCorpus.shape[1]
-        probs = np.zeros(N)
-        max_particles = np.argpartition(-self.ws, 2*p)[0:2*p]
+        probs = torch.zeros(N).to(self.ws)
+        max_particles = torch.topk(self.ws, 2*p, largest=False)[1]
         for state, w in zip(self.states[max_particles], self.ws[max_particles]):
             probs[state] += w
         # Promote states that follow the last state that was chosen
@@ -283,25 +289,27 @@ class ParticleFilter:
         # Zero out last ones to prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
             probs[self.chosen_idxs[-dc]] = 0
-        top_idxs = np.argpartition(-probs, self.pfinal)[0:self.pfinal]
-        
+        top_idxs = torch.topk(probs, self.pfinal, largest=False)
         self.chosen_idxs.append(top_idxs)
-        h = do_KL(self.WCorpus[:, top_idxs], Vt[:, 0], self.L)
+
+        h = do_KL_torch(self.WCorpus[:, top_idxs], Vt[:, 0], self.L)
         self.H.append(h)
         
         ## Step 4: Resample particles if effective number is too low
-        self.ws /= np.sum(self.ws)
-        self.all_ws.append(self.ws)
-        self.neff.append(1/np.sum(self.ws**2))
+        self.ws /= torch.sum(self.ws)
+        self.all_ws.append(self.ws.cpu().numpy())
+        self.neff.append((1/torch.sum(self.ws**2)).item())
         if self.neff[-1] < self.neff_thresh:
-            choices, _ = stochastic_universal_sample(self.ws, len(self.ws))
+            ## TODO: torch-ify stochastic universal sample
+            choices, _ = stochastic_universal_sample(self.all_ws[-1], len(self.ws))
+            choices = torch.from_numpy(choices).to(self.device)
             self.states = self.states[choices, :]
-            self.ws = np.ones(self.ws.size)/self.ws.size
+            self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
         
         ## Step 5: Create and output audio samples for this window
         y = np.zeros_like(x)
         for i in range(x.shape[0]):
-            y[i, :] = self.WSound[i][:, top_idxs].dot(h)
+            y[i, :] = self.WSound[i][:, top_idxs.cpu().numpy()].dot(h.cpu().numpy())
         self.audio_out(y)
 
         ## Step 6: Accumulate KL term for fit
