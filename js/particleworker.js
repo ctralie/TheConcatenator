@@ -92,12 +92,10 @@ class ParticleFilter {
             // TODO: It's annoying that I have to copy over audio sample by sample
             // because I couldn't get the buffer copying to work, but this does not
             // seem to be a bottleneck
-            let sum = 0;
             for (let i = 0; i < this.nChannels; i++) {
                 output.push(new Float32Array(quantum));
                 for (let k = 0; k < quantum; k++) {
                     output[i][k] = this.quantaOut[i][k];
-                    sum += this.quantaOut[i][k];
                 }
             }
             postMessage({"action":"postQuanta", "output":output});

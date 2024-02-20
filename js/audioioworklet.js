@@ -8,18 +8,17 @@ class AudioIOWorklet extends AudioWorkletProcessor {
     process(inputList, outputList, parameters) {
         const input = inputList[0];
         const output = outputList[0];
-        for (let i = 0; i < input.length; i++) {
-            output[i] = input[i];
-        }
         // Send new input quanta off to be incorporated
         this.port.postMessage({"action":"inputQuanta", "input":input}); 
         // Request new output quanta
         this.port.postMessage({"action":"pullQuanta"});
         // Output the least recently pushed audio quantum if any are available
         if (this.outputQueue.length > 0) {
-            let next = this.outputQueue.shift();
+            let next = this.outputQueue.pop();
             for (let i = 0; i < output.length; i++) {
-                output[i].set(next[i]);
+                for (let k = 0; k < next[i].length; k++) {
+                    output[i][k] = next[i][k]/2;
+                }
             }
         }
         return true;

@@ -615,6 +615,7 @@ class AudioOutBuffer {
 			for (int i = 0; i < win; i++) {
 				samples[w+i] += hann[i]*newSamples[i];
 			}
+			//std::cout << "samples[" << win*3/2 << "] = " << samples[win*3/2] << "\n";
 			w += win/2; // Shift over by a hop
 			samplesLock.unlock();
 		}
@@ -624,8 +625,8 @@ class AudioOutBuffer {
 		*/
 		void readNextQuantum(float* out) {
 			samplesLock.lock();
-			//std::cout << "q:" << q << ", w: " << w << ", samples[0]: " << samples[0] << "\n";
 			memcpy(out, samples+q, quantum);
+			//std::cout << "q:" << q << ", w: " << w << ", samples[" << q << "]: " << out[0];
 			q += quantum;
 			if (q > w) {
 				std::cout << "Warning: buffer not filling quickly enough to output audio quantum";
