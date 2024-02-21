@@ -76,9 +76,9 @@ class ParticleFilter:
         ## Step 1: Compute spectrogram for corpus
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
-        ycorpus = torch.from_numpy(np.array(ycorpus, dtype=np.float32)).to(device)
         self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
-        Ws = [torch.abs(torch.fft.rfft(W, dim=0)[self.kmin:self.kmax, :]) for W in self.WSound]
+        Ws = [torch.from_numpy(np.array(W, dtype=np.float32)).to(device) for W in self.WSound]
+        Ws = [torch.abs(torch.fft.rfft(W, dim=0)[self.kmin:self.kmax, :]) for W in Ws]
         WCorpus = torch.concatenate(tuple(Ws), axis=0)
         self.WCorpus = WCorpus
 
@@ -99,9 +99,10 @@ class ParticleFilter:
         WDenom = torch.sum(WCorpus, dim=0, keepdims=True)
         WDenom[WDenom == 0] = 1
         self.observer = Observer(p, WCorpus/WDenom, L)
-        self.propagator = Propagator(N, pd)
+        self.propagator = Propagator(N, pd, device)
         self.states = torch.randint(N, size=(P, p), dtype=torch.int32).to(device) # Particles
-        self.ws = (torch.ones(P)/P).to(ycorpus) # Particle weights
+        self.ws = np.array(np.ones(P)/P, dtype=np.float32)
+        self.ws = torch.from_numpy(self.ws).to(device) # Particle weights
         self.all_ws = []
         self.fit = 0 # KL fit
 
@@ -289,7 +290,7 @@ class ParticleFilter:
         # Zero out last ones to prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
             probs[self.chosen_idxs[-dc]] = 0
-        top_idxs = torch.topk(probs, self.pfinal, largest=False)
+        top_idxs = torch.topk(probs, self.pfinal, largest=False)[1]
         self.chosen_idxs.append(top_idxs)
 
         h = do_KL_torch(self.WCorpus[:, top_idxs], Vt[:, 0], self.L)
@@ -313,9 +314,9 @@ class ParticleFilter:
         self.audio_out(y)
 
         ## Step 6: Accumulate KL term for fit
-        WH = self.WCorpus[:, top_idxs].dot(h)
+        WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
-        self.fit += np.sum(Vt*np.log(Vt/WH) - Vt + WH)
+        self.fit += (torch.sum(Vt*np.log(Vt/WH) - Vt + WH)).item()
 
     def plot_statistics(self):
         """

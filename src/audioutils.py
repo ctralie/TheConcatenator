@@ -46,7 +46,7 @@ def get_windowed(x, hop, win, win_fn=hann_window):
     S = np.zeros((win, nwin))
     for j in range(nwin):
         xj = x[hop*j:hop*j+win]
-        S[0:xj.size, :] = xj
+        S[0:xj.size, j] = xj
     return S*win_fn(win)[:, None]
 
 def do_windowed_sum(WSound, H, win, hop):
