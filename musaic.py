@@ -24,7 +24,8 @@ if __name__ == '__main__':
     parser.add_argument('--use_gpu', type=int, default=1, help="If 1 (default), use GPU.  If 0, use CPU")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
     parser.add_argument('--r', type=int, default=7, help="Width of the repeated activation filter")
-    parser.add_argument('--p', type=int, default=10, help="Number of simultaneous activations")
+    parser.add_argument('--p', type=int, default=10, help="Number of simultaneous activations to use in particle filter")
+    parser.add_argument('--pFinal', type=int, default=0, help="Number of simultaneous activations to use in output (by default use all of them)")
     parser.add_argument('--pd', type=float, default=0.99, help="Probability of sticking to an activation (0 is no stick, closer to 1 is longer continuous activations)")
     parser.add_argument('--L', type=int, default=10, help="Number of KL iterations")
     parser.add_argument('--particles', type=int, default=2000, help="Number of particles in the particle filter")
@@ -37,7 +38,10 @@ if __name__ == '__main__':
     ycorpus = load_corpus(opt.corpus, sr=opt.sr, stereo=(opt.stereo==1))
 
     print("Finished setting up corpus; doing particle filter")
-    pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, sr=opt.sr, min_freq=opt.minFreq, max_freq=opt.maxFreq, p=opt.p, pfinal=opt.p, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, use_gpu=(opt.use_gpu==1), use_mic=(opt.target=="mic"))
+    pfinal = opt.p
+    if opt.pFinal > 0:
+        pfinal = opt.pFinal
+    pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, sr=opt.sr, min_freq=opt.minFreq, max_freq=opt.maxFreq, p=opt.p, pfinal=pfinal, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, use_gpu=(opt.use_gpu==1), use_mic=(opt.target=="mic"))
     if not opt.target == "mic":
         ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo==1))
         tic = time.time()

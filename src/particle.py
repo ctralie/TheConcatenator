@@ -97,6 +97,8 @@ class ParticleFilter:
         self.states = np.random.randint(N, size=(P, p)) # Particles
         self.ws = np.ones(P)/P # Particle weights
         self.all_ws = []
+        self.all_dots = []
+        self.all_obs_probs = []
         self.fit = 0 # KL fit
 
         ## Step 4: Setup a circular buffer that receives hop samples at a time
@@ -136,7 +138,7 @@ class ParticleFilter:
         """
         from scipy import sparse
         N = self.WCorpus.shape[1]
-        p = self.states.shape[1]
+        p = self.pfinal
         T = len(self.H)
         vals = np.array(self.H).flatten()
         rows = np.array(self.chosen_idxs, dtype=int).flatten()
@@ -261,12 +263,15 @@ class ParticleFilter:
         ## Step 2: Apply the observation probability updates
         dots = []
         if self.use_gpu:
-            dots = self.observer.observe(self.states, Vt)
+            dots = self.observer.observe(self.states, Vt/np.sqrt(np.sum(Vt**2)))
         else:
-            dots = self.observer.observe_cpu(self.states, Vt)
-        obs_prob = np.exp(dots*self.temperature/np.max(dots))
+            dots = self.observer.observe_cpu(self.states, Vt/np.sqrt(np.sum(Vt**2)))
+        dots -= np.min(dots)
+        obs_prob = np.exp(dots)**self.temperature
         obs_prob /= np.sum(obs_prob)
         self.ws *= obs_prob
+        self.all_dots.append(dots)
+        self.all_obs_probs.append(obs_prob)
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
