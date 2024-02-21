@@ -131,7 +131,7 @@ class ParticleFilter:
                                 stream_callback=self.audio_in)
             stream.start_stream()
             while stream.is_active():
-                time.sleep(5)
+                time.sleep(60)
                 stream.stop_stream()
                 print("Stream is stopped")
             stream.close()
@@ -288,7 +288,7 @@ class ParticleFilter:
         self.wsmax.append(torch.max(self.ws).item())
         N = self.WCorpus.shape[1]
         probs = torch.zeros(N).to(self.ws)
-        max_particles = torch.topk(self.ws, 2*p, largest=False)[1]
+        max_particles = torch.topk(self.ws, 2*p, largest=True)[1]
         for state, w in zip(self.states[max_particles], self.ws[max_particles]):
             probs[state] += w
         # Promote states that follow the last state that was chosen
@@ -298,7 +298,7 @@ class ParticleFilter:
         # Zero out last ones to prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
             probs[self.chosen_idxs[-dc]] = 0
-        top_idxs = torch.topk(probs, self.pfinal, largest=False)[1]
+        top_idxs = torch.topk(probs, self.pfinal, largest=True)[1]
         self.chosen_idxs.append(top_idxs)
 
         h = do_KL_torch(self.WCorpus[:, top_idxs], Vt[:, 0], self.L)
