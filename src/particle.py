@@ -273,12 +273,13 @@ class ParticleFilter:
         ## Step 1: Do STFT of this window and sample from proposal distribution
         Vs = [torch.abs(torch.fft.rfft(self.win_samples*x[i, :])[self.kmin:self.kmax]) for i in range(x.shape[0])]
         Vt = torch.concatenate(Vs).unsqueeze(-1)
-        Vt = Vt/torch.sqrt(torch.sum(Vt**2))
         self.propagator.propagate(self.states)
 
         ## Step 2: Apply the observation probability updates
         dots = self.observer.observe(self.states, Vt)
-        obs_prob = torch.exp(dots*self.temperature/torch.max(dots))
+        obs_prob = self.temperature*torch.log(dots)
+        obs_prob -= torch.max(obs_prob)
+        obs_prob = torch.exp(obs_prob)
         obs_prob /= torch.sum(obs_prob)
         self.ws *= obs_prob
 
