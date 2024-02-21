@@ -266,8 +266,9 @@ class ParticleFilter:
             dots = self.observer.observe(self.states, Vt/np.sqrt(np.sum(Vt**2)))
         else:
             dots = self.observer.observe_cpu(self.states, Vt/np.sqrt(np.sum(Vt**2)))
-        dots -= np.min(dots)
-        obs_prob = np.exp(dots)**self.temperature
+        obs_prob = self.temperature*np.log(dots)
+        obs_prob -= np.max(obs_prob)
+        obs_prob = np.exp(obs_prob)
         obs_prob /= np.sum(obs_prob)
         self.ws *= obs_prob
         self.all_dots.append(dots)
