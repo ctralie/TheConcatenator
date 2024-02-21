@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 def get_activations_diff(H, p):
     """
@@ -228,13 +229,43 @@ def do_KL(Wi, Vt, L):
     h: ndarray(p)
         Activations
     """
-    #hi = np.random.rand(Wi.shape[1])
-    hi = np.ones(Wi.shape[1])
+    hi = np.random.rand(Wi.shape[1])
+    #hi = np.ones(Wi.shape[1])
     Wd = np.sum(Wi, axis=0)
     Wd[Wd == 0] = 1
-    for l in range(L):
+    losses = []
+    for _ in range(L):
         WH = Wi.dot(hi)
         WH[WH == 0] = 1
         VLam = Vt/WH
         hi *= ((Wi.T).dot(VLam)/Wd)
+    return hi
+
+def do_KL_torch(Wi, Vt, L):
+    """
+    Perform a KL-based NMF using pytorch
+
+    Parameters
+    ----------
+    Wi: torch.tensor(M, p)
+        Templates
+    Vt: torch.tensor(M)
+        Observation
+    L: int
+        Number of iterations
+    
+    Returns
+    -------
+    h: ndarray(p)
+        Activations
+    """
+    hi = torch.rand(Wi.shape[1]).to(Wi)
+    Wd = torch.sum(Wi, dim=0)
+    Wd[Wd == 0] = 1
+    WiT = torch.movedim(Wi, 0, 1)
+    for _ in range(L):
+        WH = torch.matmul(Wi, hi)
+        WH[WH == 0] = 1
+        VLam = Vt/WH
+        hi *= torch.matmul(WiT, VLam)/Wd
     return hi
