@@ -106,6 +106,12 @@ class ParticleFilter:
         self.all_ws = []
         self.fit = 0 # KL fit
 
+        ## Step 3b: Run observer and propagator on random data to precompile kernels
+        ## so that the first step doesn't lag
+        states_dummy = torch.randint(N, size=(P, p), dtype=torch.int32).to(device)
+        self.observer.observe(states_dummy, torch.rand(WCorpus.shape[0], 1, dtype=torch.float32).to(device))
+        self.propagator.propagate(states_dummy)
+
         ## Step 4: Setup a circular buffer that receives hop samples at a time
         self.buf_in  = np.zeros((n_channels, win), dtype=np.float32)
         # Setup an output buffer that doubles in size like an arraylist
@@ -261,7 +267,7 @@ class ParticleFilter:
         """
         if len(self.H)%10 == 0:
             print(".", end="", flush=True)
-        
+        x_orig = x
         x = torch.from_numpy(np.array(x, dtype=np.float32)).to(self.device)
         p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
@@ -308,15 +314,15 @@ class ParticleFilter:
             self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
         
         ## Step 5: Create and output audio samples for this window
-        y = np.zeros_like(x)
-        for i in range(x.shape[0]):
+        y = np.zeros_like(x_orig)
+        for i in range(x_orig.shape[0]):
             y[i, :] = self.WSound[i][:, top_idxs.cpu().numpy()].dot(h.cpu().numpy())
         self.audio_out(y)
 
         ## Step 6: Accumulate KL term for fit
         WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
-        self.fit += (torch.sum(Vt*np.log(Vt/WH) - Vt + WH)).item()
+        self.fit += (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
 
     def plot_statistics(self):
         """
