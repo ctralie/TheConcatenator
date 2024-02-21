@@ -44,7 +44,10 @@ if __name__ == '__main__':
 
     print("Finished setting up corpus; doing particle filter")
     pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, sr=opt.sr, min_freq=opt.minFreq, max_freq=opt.maxFreq, p=opt.p, pfinal=pfinal, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, device=opt.device, use_mic=(opt.target=="mic"))
-    if not opt.target == "mic":
+    if opt.target == "mic":
+        while not pf.recording_started or (pf.recording_started and not pf.recording_finished):
+            time.sleep(2)
+    else:
         ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo==1))
         tic = time.time()
         pf.process_audio_offline(ytarget)

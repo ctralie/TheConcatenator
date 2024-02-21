@@ -10,6 +10,7 @@ import pyaudio
 import struct
 import time
 from threading import Lock
+from tkinter import Tk, ttk
 
 class ParticleFilter:
     def __init__(self, ycorpus, win, sr, min_freq, max_freq, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, device="cpu", use_mic=False):
@@ -64,6 +65,7 @@ class ParticleFilter:
         self.kmin = max(0, int(win*min_freq/sr)+1)
         self.kmax = min(int(win*max_freq/sr)+1, win//2)
         hop = win//2
+        self.hop = hop
 
         self.neff = [] # Number of effective particles over time
         self.wsmax = [] # Max weights over time
@@ -121,21 +123,36 @@ class ParticleFilter:
         if use_mic:
             self.mutex = Lock()
             self.processing_frame = False
-            audio = pyaudio.PyAudio()
-            stream = audio.open(format=pyaudio.paFloat32, 
-                                frames_per_buffer=hop, 
-                                channels=n_channels, 
-                                rate=sr, 
-                                output=True, 
-                                input=True, 
-                                stream_callback=self.audio_in)
-            stream.start_stream()
-            while stream.is_active():
-                time.sleep(60)
-                stream.stop_stream()
-                print("Stream is stopped")
-            stream.close()
-            audio.terminate()
+            self.audio = pyaudio.PyAudio()
+            self.recording_started = False
+            self.recording_finished = False
+            self.tk_root = Tk()
+            f = ttk.Frame(self.tk_root, padding=10)
+            f.grid()
+            ttk.Label(f, text="The Concatenator Real Time!").grid(column=0, row=0)
+            self.record_button = ttk.Button(f, text="Start Recording", command=self.start_audio_recording)
+            self.record_button.grid(column=0, row=1)
+            self.tk_root.mainloop()
+            
+
+    def start_audio_recording(self):
+        self.stream = self.audio.open(format=pyaudio.paFloat32, 
+                            frames_per_buffer=self.hop, 
+                            channels=self.n_channels, 
+                            rate=self.sr, 
+                            output=True, 
+                            input=True, 
+                            stream_callback=self.audio_in)
+        self.record_button.configure(text="Stop Recording")
+        self.record_button.configure(command=self.stop_audio_recording)
+        self.recording_started = True
+        self.stream.start_stream()
+    
+    def stop_audio_recording(self):
+        self.stream.close()
+        self.audio.terminate()
+        self.tk_root.destroy()
+        self.recording_finished = True
     
     def get_H(self):
         """
