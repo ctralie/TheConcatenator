@@ -50,7 +50,6 @@ class ParticleFilter:
             If true, use the microphone
         """
         self.win_samples = np.array(hann_window(win), dtype=np.float32)
-        self.win_samples = torch.from_numpy(self.win_samples).to(device)
         self.pfinal = pfinal
         self.pd = pd
         self.temperature = temperature
@@ -79,8 +78,8 @@ class ParticleFilter:
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
         self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
-        Ws = [torch.from_numpy(np.array(W, dtype=np.float32)).to(device) for W in self.WSound]
-        Ws = [torch.abs(torch.fft.rfft(W, dim=0)[self.kmin:self.kmax, :]) for W in Ws]
+        Ws = [np.array(np.abs(np.fft.rfft(W, axis=0)), dtype=np.float32) for W in self.WSound]
+        Ws = [torch.from_numpy(W[self.kmin:self.kmax, :]).to(device) for W in Ws]
         WCorpus = torch.concatenate(tuple(Ws), axis=0)
         self.WCorpus = WCorpus
 
@@ -295,12 +294,12 @@ class ParticleFilter:
         """
         if len(self.H)%10 == 0:
             print(".", end="", flush=True)
-        x_orig = x
-        x = torch.from_numpy(np.array(x, dtype=np.float32)).to(self.device)
         p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
-        Vs = [torch.abs(torch.fft.rfft(self.win_samples*x[i, :])[self.kmin:self.kmax]) for i in range(x.shape[0])]
-        Vt = torch.concatenate(Vs).unsqueeze(-1)
+        Vs = [np.abs(np.fft.rfft(self.win_samples*x[i, :])[self.kmin:self.kmax]) for i in range(x.shape[0])]
+        Vs = np.array(np.concatenate(tuple(Vs)), dtype=np.float32)
+        Vt = torch.from_numpy(Vs).to(self.device)
+        Vt = Vt.view(Vt.numel(), 1)
         self.propagator.propagate(self.states)
 
         ## Step 2: Apply the observation probability updates
@@ -344,8 +343,8 @@ class ParticleFilter:
             self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
         
         ## Step 5: Create and output audio samples for this window
-        y = np.zeros_like(x_orig)
-        for i in range(x_orig.shape[0]):
+        y = np.zeros_like(x)
+        for i in range(x.shape[0]):
             y[i, :] = self.WSound[i][:, top_idxs.cpu().numpy()].dot(h.cpu().numpy())
         self.audio_out(y)
 
