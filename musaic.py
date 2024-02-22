@@ -16,6 +16,7 @@ if __name__ == '__main__':
     parser.add_argument('--corpus', type=str, required=True, help="Path to audio file or directory for source sounds")
     parser.add_argument('--target', type=str, required=True, help="Path to audio file for target sound, or \"mic\" if using the microphone to do real time")
     parser.add_argument('--result', type=str, required=True, help="Path to wav file to which to save the result")
+    parser.add_argument('--recorded', type=str, default="recorded.wav", help="Path to wav file to which to the audio that was recorded (only relevant if target is mic)")
     parser.add_argument('--winSize', type=int, default=2048, help="Window Size in samples")
     parser.add_argument('--sr', type=int, default=44100, help="Sample rate")
     parser.add_argument('--minFreq', type=int, default=50, help="Minimum frequency to use (in hz)")
@@ -41,18 +42,23 @@ if __name__ == '__main__':
 
     print("Loading corpus...")
     ycorpus = load_corpus(opt.corpus, sr=opt.sr, stereo=(opt.stereo==1))
+    print("Finished setting up corpus")
 
-    print("Finished setting up corpus; doing particle filter")
+    print("Setting up particle filter...")
     pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, sr=opt.sr, min_freq=opt.minFreq, max_freq=opt.maxFreq, p=opt.p, pfinal=pfinal, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, device=opt.device, use_mic=(opt.target=="mic"))
     if opt.target == "mic":
         while not pf.recording_started or (pf.recording_started and not pf.recording_finished):
             time.sleep(2)
+        recorded = pf.get_recorded_audio()
+        wavfile.write(opt.recorded, opt.sr, recorded)
     else:
+        print("Processing audio frames")
         ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo==1))
         tic = time.time()
         pf.process_audio_offline(ytarget)
         print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))    
-    wavfile.write(opt.result, opt.sr, pf.get_generated_audio())
+    generated = pf.get_generated_audio()
+    wavfile.write(opt.result, opt.sr, generated)
     
 
     if opt.saveplots == 1:

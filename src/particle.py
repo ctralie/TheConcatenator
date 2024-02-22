@@ -114,13 +114,15 @@ class ParticleFilter:
         self.observer.observe(states_dummy, torch.rand(WCorpus.shape[0], 1, dtype=torch.float32).to(device))
         self.propagator.propagate(states_dummy)
 
-        ## Step 4: Setup a circular buffer that receives hop samples at a time
+        ## Step 4: Setup audio buffers
+        # Setup a circular buffer that receives in hop samples at a time
         self.buf_in  = np.zeros((n_channels, win), dtype=np.float32)
         # Setup an output buffer that doubles in size like an arraylist
         self.buf_out = np.zeros((n_channels, sr*60*10), dtype=np.float32)
 
         ## Step 5: If we're using the mic, set that up
         if use_mic:
+            self.recorded_audio = []
             self.mutex = Lock()
             self.processing_frame = False
             self.audio = pyaudio.PyAudio()
@@ -189,6 +191,14 @@ class ParticleFilter:
         if ret.size > 0:
             ret /= np.max(np.abs(ret))
         return ret.T
+    
+    def get_recorded_audio(self):
+        """
+        Returns the audio that's been recorded if we've
+        done a recording session
+        """
+        assert(self.use_mic)
+        return np.concatenate(tuple(self.recorded_audio), axis=1).T
 
     def audio_in(self, s, frame_count=None, time_info=None, status=None):
         """
@@ -220,6 +230,7 @@ class ParticleFilter:
             fmt = "<"+"f"*(self.n_channels*self.win//2)
             x = np.array(struct.unpack(fmt, s), dtype=np.float32)
             x = np.reshape(x, (x.size//nc, nc)).T
+            self.recorded_audio.append(x)
         else:
             x = s
         hop = self.win//2
