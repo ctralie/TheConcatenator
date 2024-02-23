@@ -101,11 +101,17 @@ The idea of spectrogram decomposition used for concatenative musaicing goes back
 
 \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} provide some improvements to the ``Let It Bee'' technique, including sidestepping phase retrieval, which we exploit in our work.
 
-One issue with the ``Let It Bee'' technique is the sources have to be augmented with pitch shifts to hit additional pitches in the target, increasing memory consumption and runtime.  \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D convolutive NMF \cite{schmidt2006nonnegative}, which models pitch shifts in the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for diagonal enhancement.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
+One issue with the ``Let It Bee'' technique is the sources have to be augmented with pitch shifts to hit additional pitches in the target, increasing memory consumption and runtime.  \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D deconvolutional NMF \cite{schmidt2006nonnegative}.  Their technique uses the Constant-Q transform, which allows pitch shifts to be modeled as constant shifts the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for diagonal enhancement.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
+
+
+Schwarz created an offline concatenative synthesis system dubbed ``Caterpillar'' that uses the Viterbi algorithm \cite{schwarz2000system}, which was later approximated with a real time system, "CataRT" that uses a greedy approach instead of the Viterbi algorithm \cite{schwarz2006real, schwarz2008principles}.  
+
+Another possiblity to approximate Bayesian inference in real time applications is a particle filter, which we turn to in our work.  Particle filters have found use in other real time MIR applications such pitch tracking \cite{duan2011state} and beat tracking \cite{heydari2021don}.  We are even aware of one work that uses Bayesian inference on factorial hidden Markov models to track {\em multiple} pitches \cite{wohlmayr2010probabilistic}, which is related to our perspective of tracking multiple source activations (Section~\ref{sec:bayesian})
 
 \section{Real Time Let It Bee}
 
 \subsection{Bayesian Formulation}
+\label{sec:bayesian}
 
     Given:
     \begin{enumerate}
@@ -136,6 +142,8 @@ One issue with the ``Let It Bee'' technique is the sources have to be augmented 
 
     
         The third case is to prevent repeated activations, but this is only enforced on adjacent frames due to the Markov property
+
+        This can be viewed as a Factorial Hidden Markov Model \cite{ghahramani1995factorial}.
 
 		TODO: Define the observation probability
 
