@@ -72,6 +72,9 @@
 
 \sloppy % please retain sloppy command for improved formatting
 
+\newcommand{\ChrisEdit}[1]{\textcolor{red}{(#1)}}
+\newcommand{\BenEdit}[1]{\textcolor{blue}{(#1)}}
+
 \begin{document}
 
 %
@@ -86,32 +89,62 @@
 
 Speed/accessibility will impact speed of research and innovation
 
-\section{Background}
+\section{Related Work}
+This work builds on a long history of work in Bayesian inference and particle filters, concatenative synthesis, and applied nonnegative matrix factorization (NMF).
+
+From an artistic point of view, the most similar technique to ours is Driedger's 2015 ``Let It Bee'' concatenative musaicing technique \cite{driedger2015let}, which uses NMF to learn activations of spectral templates so that their combination will match a target spectrogram.
+\BenEdit{TODO: Talk about Zero Point and Edenic}
 
 
-\subsection{Driedger's Original Technique}
+We now detail some of the mathematics of Driedger's technique, as we borrow a few ideas in our work.  Driedger seeks to $H$ in the equation $V \approx WH$, where $V$ is an $M \times T$ target spectrogram with $M$ frequency bins and $T$ times, $W$ is an $M \times N$ set of $N$ spectral templates that are treated as fixed, and $H$ is a matrix of $N \times T$ learned activations.  For instance, $W$ could be the spectral windows of a collection of buzzing bees and $V$ could be an excerpt from The Beatles' ``Let It Be'' (hence the title).  Driedger uses the Kullback-Liebler (KL) divergence loss, an instance of the more general $\beta$-divergence \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem}, to measure the goodness of fit of $WH$ to $V$.  This loss function is 
 
-Describe in detail
+\begin{equation}
+\label{eq:klloss}
+D(V || WH) = V \odot \log \left( \frac{V}{WH} \right) - V + WH
+\end{equation}
 
-\subsection{Related Techniques}
+where $\odot$, $/$, $+$, and $-$ are all applied element-wise.  As Lee/Seung show, choosing the right step size turns gradient descent of Equation~\ref{eq:klloss}, with respect to $W$ and $H$, into {\em multiplicative update rules} that guarantee monotonic convergence.  Driedger keeps $W$ fixed to force the final audio to use exact copies of the templates, so only the update rule for $H$ is relevant.  At iteration $\ell$, this is:
 
-Need some references on granular synthesis.
+\begin{equation}
+\label{eq:klhgrad}
+H_{kt}^{\ell} \gets H_{kt}^{\ell-1} \left( \frac{ \sum_{n} W_{nk} V{nt} / (WH^{\ell})_{nt} }{ \sum_{n} W_{nk} } \right)
+\end{equation}
 
-The idea of spectrogram decomposition used for concatenative musaicing goes back to the work of \cite{burred2013cross}.
+Crucially, though, Driedger notes that the update rules in Equation~\ref{eq:klhgrad} alone will lose the timbral character of the templates in $W$.  He hence disrupts ordinary KL gradient descent by performing several increasingly impactful modifications to $H$ before Equation~\ref{eq:klhgrad} in each step, which are eventually set in stone after $L$ total iterations.  First, he avoids repeated activations to avoid a ``jittering'' effect, allowing a particular activation $k$ to only exist once in some iterval based on where it's the strongest:
+\begin{equation}
+    (H_r)_{kt}^{\ell} \gets \left\{ \begin{array}{cc} H^{\ell-1}_{kt} & H^{\ell-1}_{kt} > H^{\ell-1}_{ks}, |t - s| \leq r \\ H^{\ell-1}_{kt} (1 - \frac{\ell+1}{L}) & \text{otherwise}  \end{array} \right\}
+\end{equation}
+for some chosen $r$.  He also promotes sparsity in a similar way by shrinking all but the top $p$ activations in each column of $H_r$ to create $H_p^{\ell}$.  Finally, he adds a step to encourage {\em time continuous activations} by doing ``diagonal enhancement,'' or by doing a windowed sum down each diagonal of $H_p$, assuming the columns of $W$ are also in a time order\footnote{Similar tricks have been used, for instance in music structure analysis \cite{mcfee2014analyzing}}:
 
-\cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} provide some improvements to the ``Let It Bee'' technique, including sidestepping phase retrieval, which we exploit in our work.
+\begin{equation}
+(H_c)_{kt}^{\ell} = \sum_{i=-c}^c (H_p)^{\ell}_{k+i, t+i}
+\end{equation}
 
-One issue with the ``Let It Bee'' technique is the sources have to be augmented with pitch shifts to hit additional pitches in the target, increasing memory consumption and runtime.  \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D deconvolutional NMF \cite{schmidt2006nonnegative}.  Their technique uses the Constant-Q transform, which allows pitch shifts to be modeled as constant shifts the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for diagonal enhancement.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
+Since this encourages the algorithm to mash up chunks of $W$ in a time order, it effectively encourages sound grains from the templates than the length of a single window that ordinary NMF would take.  Finally, Equation~\ref{eq:klhgrad} is applied to $H_c^{\ell}$ to obtain $H^{\ell}$.
+
+Overall, these disruptions remove the guarantee that Equation~\ref{eq:klloss} will be minimized, or that it will even monotonically decrease, but Driedger's brilliant insight is that the loss function is merely a guide to choose reasonable activations; a sub-optimal fit leaves room to better preserve timbral characteristics.  We take a similar perspective.
 
 
-Schwarz created an offline concatenative synthesis system dubbed ``Caterpillar'' that uses the Viterbi algorithm \cite{schwarz2000system}, which was later approximated with a real time system, "CataRT" that uses a greedy approach instead of the Viterbi algorithm \cite{schwarz2006real, schwarz2008principles}.  
 
-Another possiblity to approximate Bayesian inference in real time applications is a particle filter, which we turn to in our work.  Particle filters have found use in other real time MIR applications such pitch tracking \cite{duan2011state} and beat tracking \cite{heydari2021don}.  We are even aware of one work that uses Bayesian inference on factorial hidden Markov models to track {\em multiple} pitches \cite{wohlmayr2010probabilistic}, which is related to our perspective of tracking multiple source activations (Section~\ref{sec:bayesian})
+\subsubsection{Beyond Driedger}
+Interestingly, the idea of spectrogram decomposition used for concatenative musaicing goes back to the work of \cite{burred2013cross}.
 
-\section{Real Time Let It Bee}
+The authors of \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} provide some improvements to Driedger's technique, including sidestepping phase retrieval, which we exploit in our work.
+
+One issue with Driedger's technique is the sources have to be augmented with pitch shifts to hit additional pitches in the target, increasing memory consumption and runtime.  The authors of \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D deconvolutional NMF \cite{schmidt2006nonnegative}.  Specifically, their technique uses the Constant-Q transform, where pitch shifts are modeled as constant shifts of the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for diagonal enhancement.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
+
+
+
+Schwarz created an offline concatenative synthesis system dubbed ``Caterpillar'' that uses the Viterbi algorithm \cite{schwarz2000system}, which was later approximated with a real time system, "CataRT" that uses a greedy approach instead of the Viterbi algorithm \cite{schwarz2006real, schwarz2008principles}.  Simon's ``audio analogies'' is quite similar \cite{simon2005audio}, but instead of a user controlled traversal through timbral space, they use features from some source (e.g. midi audio) to guide synthesis to a target with a different timbre (e.g. real audio of someone playing a trumpet).  \BenEdit{Need some additional references on granular synthesis}.
+
+Caterpillar and audio analogies are both Bayesian in nature; that is, given a prior transition probablity \ChrisEdit{TODO: finish explaining bayesian} the hidden state is the template to concatenate, and the ``observation'' is a user-controlled trajetory or features from a source timbre, respectively.  However, they use the Viterbi algorithm, which is computationally intensive and which needs all time history, so it cannot be applied in real time.  A particle filter is an alternative for real time Bayesian inference \ChrisEdit{find particle filter citations}.  Particle filters have found use in other real time MIR applications such pitch tracking \cite{duan2011state} and beat tracking \cite{heydari2021don}.  We are even aware of one work that uses Bayesian inference on factorial hidden Markov models to track {\em multiple} pitches \cite{wohlmayr2010probabilistic}, which is related to our perspective of tracking multiple source activations (Section~\ref{sec:bayesian})
+
+\section{The Concatenator}
 
 \subsection{Bayesian Formulation}
 \label{sec:bayesian}
+
+    The NMF technique of Driedger is not suitable for realtime applications, both because the gradient update rules of Equation~\ref{eq:klhgrad} are too slow, but also because the equations to promote repeated activations and time-continuous at each entry of $H$ require knowledge of all activations in $H$, including future activations.  We instead turn to a Bayesian Formulation, where we view the templates $V$ in Equation~\ref{eq:nmfdecomposition} as observed 
 
     Given:
     \begin{enumerate}
@@ -124,7 +157,7 @@ Another possiblity to approximate Bayesian inference in real time applications i
         \item
             A parameter $p$ for the sparsity, and a $p$-dimensional hidden state variable $x$
 
-                \[ x_k \in [0, 1, ..., N-1], k = 0, 1, ..., p-1 \]
+                \[ x_k \in \left\{0, 1, ..., N-1\right\}, k = 0, 1, ..., p-1 \]
         
         \item
             A parameter $p_d \in [0, 1]$ for diagonal promotion
