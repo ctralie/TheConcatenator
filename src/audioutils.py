@@ -105,6 +105,7 @@ def load_corpus(path, sr, stereo):
             x, sr = librosa.load(f, sr=sr, mono=not stereo)
             if stereo and len(x.shape) == 1:
                 x = np.array([x, x])
+            x -= np.mean(x, axis=1, keepdims=True)
             samples.append(x)
         except:
             pass
