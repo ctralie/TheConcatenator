@@ -62,6 +62,8 @@ class ParticleFilter:
         use_mic: bool
             If true, use the microphone
         """
+        print("Setting up particle filter...")
+        tic = time.time()
         win = feature_params["win"]
         sr = feature_params["sr"]
         self.win_samples = np.array(hann_window(win), dtype=np.float32)
@@ -133,6 +135,8 @@ class ParticleFilter:
         self.buf_in  = np.zeros((n_channels, win), dtype=np.float32)
         # Setup an output buffer that doubles in size like an arraylist
         self.buf_out = np.zeros((n_channels, sr*60*10), dtype=np.float32)
+
+        print("Finished setting up particle filter: Elapsed Time {:.3f} seconds".format(time.time()-tic))
 
         ## Step 5: If we're using the mic, set that up
         if use_mic:

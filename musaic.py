@@ -43,11 +43,11 @@ if __name__ == '__main__':
         pfinal = opt.pFinal
     assert(pfinal <= opt.p)
 
-    print("Loading corpus...")
+    print("Loading corpus audio...")
+    tic = time.time()
     ycorpus = load_corpus(opt.corpus, sr=opt.sr, stereo=(opt.stereo==1))
-    print("Finished setting up corpus")
+    print("Finished loading up corpus audio: Elapsed Time {:.3f} seconds".format(time.time()-tic))
 
-    print("Setting up particle filter...")
     feature_params = dict(
         win=opt.winSize,
         sr=opt.sr,
@@ -75,11 +75,11 @@ if __name__ == '__main__':
         recorded = pf.get_recorded_audio()
         wavfile.write(opt.recorded, opt.sr, recorded)
     else:
-        print("Processing audio frames")
+        print("Processing frames offline with particle filter...")
         ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo==1))
         tic = time.time()
         pf.process_audio_offline(ytarget)
-        print("Elapsed time particle filter: {:.3f}".format(time.time()-tic))    
+        print("Elapsed time offline particle filter: {:.3f}".format(time.time()-tic))    
     generated = pf.get_generated_audio()
     wavfile.write(opt.result, opt.sr, generated)
     
