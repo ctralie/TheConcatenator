@@ -19,8 +19,9 @@ if __name__ == '__main__':
     parser.add_argument('--recorded', type=str, default="recorded.wav", help="Path to wav file to which to the audio that was recorded (only relevant if target is mic)")
     parser.add_argument('--winSize', type=int, default=2048, help="Window Size in samples")
     parser.add_argument('--sr', type=int, default=44100, help="Sample rate")
-    parser.add_argument('--minFreq', type=int, default=50, help="Minimum frequency to use (in hz)")
-    parser.add_argument('--maxFreq', type=int, default=10000, help="Maximum frequency to use (in hz)")
+    parser.add_argument('--minFreq', type=int, default=50, help="Minimum frequency to use (in hz), if using spectrogram bins directly")
+    parser.add_argument('--maxFreq', type=int, default=10000, help="Maximum frequency to use (in hz), if using spectrogram bins directly")
+    parser.add_argument('--useMFCC', type=int, default=0, help="If 0, use mfcc")
     parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
     parser.add_argument('--device', type=str, default="cpu", help="Torch device to use")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
@@ -45,7 +46,25 @@ if __name__ == '__main__':
     print("Finished setting up corpus")
 
     print("Setting up particle filter...")
-    pf = ParticleFilter(ycorpus=ycorpus, win=opt.winSize, sr=opt.sr, min_freq=opt.minFreq, max_freq=opt.maxFreq, p=opt.p, pfinal=pfinal, pd=opt.pd, temperature=opt.temperature, L=opt.L, P=opt.particles, gamma=opt.gamma, r=opt.r, neff_thresh=0.1*opt.particles, device=opt.device, use_mic=(opt.target=="mic"))
+    feature_params = dict(
+        win=opt.winSize,
+        sr=opt.sr,
+        min_freq=opt.minFreq,
+        max_freq=opt.maxFreq,
+        use_mfcc=opt.useMFCC == 1
+    )
+    particle_params = dict(
+        p=opt.p,
+        pfinal=pfinal,
+        pd=opt.pd,
+        temperature=opt.temperature,
+        L=opt.L,
+        P=opt.particles,
+        gamma=opt.gamma,
+        r=opt.r,
+        neff_thresh=0.1*opt.particles
+    )
+    pf = ParticleFilter(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic")
     if opt.target == "mic":
         while not pf.recording_started or (pf.recording_started and not pf.recording_finished):
             time.sleep(2)

@@ -6,6 +6,7 @@ from probutils import stochastic_universal_sample, do_KL_torch, count_top_activa
 from observer import Observer
 from propagator import Propagator
 from audioutils import get_windowed, hann_window
+from audiofeatures import AudioFeatureComputer
 import pyaudio
 import struct
 import time
@@ -13,56 +14,64 @@ from threading import Lock
 from tkinter import Tk, ttk
 
 class ParticleFilter:
-    def __init__(self, ycorpus, win, sr, min_freq, max_freq, p, pfinal, pd, temperature, L, P, gamma=0, r=3, neff_thresh=0, device="cpu", use_mic=False):
+    def __init__(self, ycorpus, feature_params, particle_params, device="cpu", use_mic=False):
         """
         ycorpus: ndarray(n_channels, n_samples)
             Stereo audio samples for the corpus
-        win: int
-            Window length for each STFT window.  For simplicity, assume
-            that hop is 1/2 of this
-        sr: int
-            Audio sample rate
-        min_freq: float
-            Minimum frequency to use (in hz)
-        max_freq: float
-            Maximum frequency to use (in hz)
-        p: int
-            Sparsity parameter for particles
-        pfinal: int
-            Sparsity parameter for final activations
-        pd: float
-            State transition probability
-        temperature: float
-            Amount to focus on matching observations
-        L: int
-            Number of iterations for NMF observation probabilities
-        P: int
-            Number of particles
-        gamma: float
-            Cosine similarity cutoff
-        r: int
-            Repeated activations cutoff
-        neff_thresh: float
-            Number of effective particles below which to resample
+        feature_params: {
+            win: int
+                Window length for each STFT window.  For simplicity, assume
+                that hop is 1/2 of this
+            sr: int
+                Audio sample rate
+            min_freq: float
+                Minimum frequency to use (in hz)
+            max_freq: float
+                Maximum frequency to use (in hz)
+            use_mfcc: bool
+                Whether to use mfcc
+        }
+        particle_params: {
+            p: int
+                Sparsity parameter for particles
+            pfinal: int
+                Sparsity parameter for final activations
+            pd: float
+                State transition probability
+            temperature: float
+                Amount to focus on matching observations
+            L: int
+                Number of iterations for NMF observation probabilities
+            P: int
+                Number of particles
+            gamma: float
+                Cosine similarity cutoff
+            r: int
+                Repeated activations cutoff
+            neff_thresh: float
+                Number of effective particles below which to resample
+        }
         device: string
             Device string for torch
         use_mic: bool
             If true, use the microphone
         """
+        win = feature_params["win"]
+        sr = feature_params["sr"]
         self.win_samples = np.array(hann_window(win), dtype=np.float32)
-        self.pfinal = pfinal
-        self.pd = pd
-        self.temperature = temperature
-        self.L = L
-        self.gamma = gamma
-        self.r = r
-        self.neff_thresh = neff_thresh
+        self.p = particle_params["p"]
+        self.P = particle_params["P"]
+        self.pfinal = particle_params["pfinal"]
+        self.pd = particle_params["pd"]
+        self.temperature = particle_params["temperature"]
+        self.L = particle_params["L"]
+        self.gamma = particle_params["gamma"]
+        self.r = particle_params["r"]
+        self.neff_thresh = particle_params["neff_thresh"]
         self.device = device
         self.use_mic = use_mic
         self.win = win
         self.sr = sr
-        self.kmin = max(0, int(win*min_freq/sr)+1)
-        self.kmax = min(int(win*max_freq/sr)+1, win//2)
         hop = win//2
         self.hop = hop
 
@@ -74,13 +83,13 @@ class ParticleFilter:
         self.chosen_idxs = [] # Keep track of chosen indices
         self.H = [] # Activations of chosen indices
 
-        ## Step 1: Compute spectrogram for corpus
+        ## Step 1: Compute features for corpus
+        feature_params["device"] = device
+        self.feature_computer = AudioFeatureComputer(**feature_params)
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
         self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
-        Ws = [np.array(np.abs(np.fft.rfft(W, axis=0)), dtype=np.float32) for W in self.WSound]
-        Ws = [torch.from_numpy(W[self.kmin:self.kmax, :]).to(device) for W in Ws]
-        WCorpus = torch.concatenate(tuple(Ws), axis=0)
+        WCorpus = torch.concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
         self.WCorpus = WCorpus
 
         ## Step 2: Setup KDTree for proposal indices if requested
@@ -99,17 +108,17 @@ class ParticleFilter:
         N = WCorpus.shape[1]
         WDenom = torch.sum(WCorpus, dim=0, keepdims=True)
         WDenom[WDenom == 0] = 1
-        self.observer = Observer(p, WCorpus/WDenom, L)
-        self.propagator = Propagator(N, pd, device)
-        self.states = torch.randint(N, size=(P, p), dtype=torch.int32).to(device) # Particles
-        self.ws = np.array(np.ones(P)/P, dtype=np.float32)
+        self.observer = Observer(self.p, WCorpus/WDenom, self.L)
+        self.propagator = Propagator(N, self.pd, device)
+        self.states = torch.randint(N, size=(self.P, self.p), dtype=torch.int32).to(device) # Particles
+        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32)
         self.ws = torch.from_numpy(self.ws).to(device) # Particle weights
         self.all_ws = []
         self.fit = 0 # KL fit
 
         ## Step 3b: Run observer and propagator on random data to precompile kernels
         ## so that the first step doesn't lag
-        states_dummy = torch.randint(N, size=(P, p), dtype=torch.int32).to(device)
+        states_dummy = torch.randint(N, size=(self.P, self.p), dtype=torch.int32).to(device)
         self.observer.observe(states_dummy, torch.rand(WCorpus.shape[0], 1, dtype=torch.float32).to(device))
         self.propagator.propagate(states_dummy)
 
@@ -296,9 +305,8 @@ class ParticleFilter:
             print(".", end="", flush=True)
         p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
-        Vs = [np.abs(np.fft.rfft(self.win_samples*x[i, :])[self.kmin:self.kmax]) for i in range(x.shape[0])]
-        Vs = np.array(np.concatenate(tuple(Vs)), dtype=np.float32)
-        Vt = torch.from_numpy(Vs).to(self.device)
+        Vs = [self.feature_computer(self.win_samples*x[i, :]) for i in range(x.shape[0])]
+        Vt = torch.concatenate(tuple(Vs))
         Vt = Vt.view(Vt.numel(), 1)
         self.propagator.propagate(self.states)
 
