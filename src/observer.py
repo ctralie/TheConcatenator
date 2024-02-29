@@ -42,6 +42,7 @@ class Observer:
         Wi = self.W[:, states]
         Wi = torch.movedim(Wi, 1, 0)
         Wd = torch.sum(Wi, dim=1).unsqueeze(-1)
+        Wd[Wd == 0] = 1
         hi = torch.rand(P, p, 1).to(Wi)
         Vt = Vt.view(1, Vt.numel(), 1)
         Vt = Vt/torch.sqrt(torch.sum(Vt**2))
