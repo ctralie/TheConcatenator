@@ -20,8 +20,10 @@ if __name__ == '__main__':
     parser.add_argument('--winSize', type=int, default=2048, help="Window Size in samples")
     parser.add_argument('--sr', type=int, default=44100, help="Sample rate")
     parser.add_argument('--minFreq', type=int, default=50, help="Minimum frequency to use (in hz), if using spectrogram bins directly")
-    parser.add_argument('--maxFreq', type=int, default=10000, help="Maximum frequency to use (in hz), if using spectrogram bins directly")
-    parser.add_argument('--useMFCC', type=int, default=0, help="If 0, use mfcc")
+    parser.add_argument('--maxFreq', type=int, default=8000, help="Maximum frequency to use (in hz), if using spectrogram bins directly")
+    parser.add_argument('--useSTFT', type=int, default=1, help="If 1, use ordinary STFT bins")
+    parser.add_argument('--useMel', type=int, default=0, help="If 1, use mel-spaced bins")
+    parser.add_argument('--melBands', type=int, default=40, help="Number of mel bands to use")
     parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
     parser.add_argument('--device', type=str, default="cpu", help="Torch device to use")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
@@ -51,7 +53,9 @@ if __name__ == '__main__':
         sr=opt.sr,
         min_freq=opt.minFreq,
         max_freq=opt.maxFreq,
-        use_mfcc=opt.useMFCC == 1
+        use_stft=opt.useSTFT == 1,
+        use_mel=opt.useMel == 1,
+        mel_bands=opt.melBands
     )
     particle_params = dict(
         p=opt.p,

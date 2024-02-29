@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-def get_mel_filterbank(sr, win, n_bands=40, fmin=0.0, fmax=8000):
+def get_mel_filterbank(sr, win, mel_bands=40, min_freq=0.0, max_freq=8000):
     """
     Return a mel-spaced triangular filterbank
 
@@ -11,28 +11,27 @@ def get_mel_filterbank(sr, win, n_bands=40, fmin=0.0, fmax=8000):
         Audio sample rate
     win: int
         Window length
-    n_bands: int
+    mel_bands: int
         Number of bands to use
-    fmin: float 
+    min_freq: float 
         Minimum frequency for Mel filterbank
-    fmax: float
+    max_freq: float
         Maximum frequency for Mel filterbank
 
     Returns
     -------
-    ndarray(n_bands, win//2+1)
+    ndarray(mel_bands, win//2+1)
         Mel filterbank, with each filter per row
     """
-    melbounds = np.array([fmin, fmax])
+    melbounds = np.array([min_freq, max_freq])
     melbounds = 1125*np.log(1 + melbounds/700.0)
-    mel = np.linspace(melbounds[0], melbounds[1], n_bands+2)
+    mel = np.linspace(melbounds[0], melbounds[1], mel_bands+2)
     binfreqs = 700*(np.exp(mel/1125.0) - 1)
     binbins = np.floor(((win-1)/float(sr))*binfreqs) #Floor to the nearest bin
     binbins = np.array(binbins, dtype=np.int64)
-
-    #Step 2: Create mel triangular filterbank
-    melfbank = np.zeros((n_bands, win//2+1))
-    for i in range(1, n_bands+1):
+    # Create mel triangular filterbank
+    melfbank = np.zeros((mel_bands, win//2+1))
+    for i in range(1, mel_bands+1):
         thisbin = binbins[i]
         lbin = binbins[i-1]
         rbin = thisbin + (thisbin - lbin)
@@ -66,7 +65,7 @@ def get_dct_basis(N, n_dct=20):
     return B
 
 class AudioFeatureComputer:
-    def __init__(self, win=2048, sr=44100, min_freq=0, max_freq=0, use_mfcc=False, use_chroma=False, device="cpu"):
+    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_chroma=False, device="cpu"):
         """
         Parameters
         ----------
@@ -78,8 +77,12 @@ class AudioFeatureComputer:
             Minimum frequency of spectrogram, if using direct spectrogram features
         max_freq: float
             Maximum frequency of spectrogram, if using direct spectrogram features
-        use_mfcc: bool
-            If True, use MFCC features
+        use_stft: bool
+            If true, use straight up STFT bins
+        mel_bands: int
+            Number of bands to use if using mel-spaced STFT
+        use_mel: bool
+            If True, use mel-spaced STFT
         use_chroma: bool
             If True, use chroma features
         device: str
@@ -89,17 +92,13 @@ class AudioFeatureComputer:
         self.sr = sr
         self.kmin = max(0, int(win*min_freq/sr)+1)
         self.kmax = min(int(win*max_freq/sr)+1, win//2)
-        self.use_mfcc = use_mfcc
+        self.use_stft = use_stft
+        self.use_mel = use_mel
         self.use_chroma = use_chroma
         self.device = device
 
-        if self.use_mfcc:
-            self.n_mel_bands = 40
-            self.n_dct = 20
-            self.lifter_coeffs = np.arange(self.n_dct)**0.6
-            self.lifter_coeffs[0] = 1
-            self.M = get_mel_filterbank(sr, win, self.n_mel_bands)
-            self.B = get_dct_basis(self.n_mel_bands, self.n_dct)
+        if self.use_mel:
+            self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
 
     def get_feature(self, x):
         """
@@ -110,14 +109,13 @@ class AudioFeatureComputer:
         """
         f = np.abs(np.fft.rfft(x))
         x = np.array([])
-        if self.kmax-self.kmin > 0:
+        if self.use_stft:
             # Ordinary STFT
             x = np.concatenate((x, f[self.kmin:self.kmax]))
-        if self.use_mfcc:
+        if self.use_mel:
             xmel = self.M.dot(f)
-            xmel = 10*np.log10(np.maximum(1e-10, xmel))
-            xmfcc = self.lifter_coeffs*(self.B.dot(xmel))
-            x = np.concatenate((x, xmfcc))
+            #xmel = 10*np.log10(np.maximum(1e-10, xmel))
+            x = np.concatenate((x, xmel))
         return torch.from_numpy(np.array(x, dtype=np.float32)).to(self.device)
 
     def __call__(self, x):

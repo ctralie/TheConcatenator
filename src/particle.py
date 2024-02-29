@@ -28,8 +28,14 @@ class ParticleFilter:
                 Minimum frequency to use (in hz)
             max_freq: float
                 Maximum frequency to use (in hz)
-            use_mfcc: bool
-                Whether to use mfcc
+            use_stft: bool
+                If true, use straight up STFT bins
+            mel_bands: int
+                Number of bands to use if using mel-spaced STFT
+            use_mel: bool
+                If True, use mel-spaced STFT
+            use_chroma: bool
+                If True, use chroma features
         }
         particle_params: {
             p: int
@@ -312,6 +318,7 @@ class ParticleFilter:
 
         ## Step 2: Apply the observation probability updates
         dots = self.observer.observe(self.states, Vt)
+        dots[dots < 1e-7] = 1e-7
         obs_prob = self.temperature*torch.log(dots)
         obs_prob -= torch.max(obs_prob)
         obs_prob = torch.exp(obs_prob)
