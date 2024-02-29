@@ -65,7 +65,7 @@ def get_dct_basis(N, n_dct=20):
     return B
 
 class AudioFeatureComputer:
-    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_chroma=False, device="cpu"):
+    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_chroma=False, use_zcs=False, device="cpu"):
         """
         Parameters
         ----------
@@ -85,6 +85,8 @@ class AudioFeatureComputer:
             If True, use mel-spaced STFT
         use_chroma: bool
             If True, use chroma features
+        use_zcs: bool
+            If True, use zero crossings
         device: str
             Torch device on which to put features before returning
         """
@@ -95,6 +97,7 @@ class AudioFeatureComputer:
         self.use_stft = use_stft
         self.use_mel = use_mel
         self.use_chroma = use_chroma
+        self.use_zcs = use_zcs
         self.device = device
 
         if self.use_mel:
@@ -116,6 +119,10 @@ class AudioFeatureComputer:
             components.append(S[self.kmin:self.kmax, :])
         if self.use_mel:
             components.append(self.M.dot(S))
+        if self.use_zcs:
+            Z = np.sign(x)
+            Z = np.sum(np.abs(Z[0:-1, :]-Z[1:, :]), axis=0, keepdims=True)
+            components.append(Z)
         res = np.concatenate(tuple(components), axis=0)
         if x.shape == 0:
             res = res[:, 0]

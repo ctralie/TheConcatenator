@@ -36,6 +36,8 @@ class ParticleFilter:
                 If True, use mel-spaced STFT
             use_chroma: bool
                 If True, use chroma features
+            use_zcs: bool
+                If True, use zero crossings
         }
         particle_params: {
             p: int
