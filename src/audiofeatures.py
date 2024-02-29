@@ -99,25 +99,7 @@ class AudioFeatureComputer:
 
         if self.use_mel:
             self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
-
-    def get_feature(self, x):
-        """
-        Parameters
-        ----------
-        x: ndarray(win)
-
-        """
-        f = np.abs(np.fft.rfft(x))
-        x = np.array([])
-        if self.use_stft:
-            # Ordinary STFT
-            x = np.concatenate((x, f[self.kmin:self.kmax]))
-        if self.use_mel:
-            xmel = self.M.dot(f)
-            #xmel = 10*np.log10(np.maximum(1e-10, xmel))
-            x = np.concatenate((x, xmel))
-        return torch.from_numpy(np.array(x, dtype=np.float32)).to(self.device)
-
+    
     def __call__(self, x):
         """
         Parameters
@@ -125,11 +107,16 @@ class AudioFeatureComputer:
         x: ndarray(win) or ndarray(win, n_frames)
             Pre-windowed audio frames
         """
-        W = None
-        if len(x.shape) == 2:
-            ## Compute features of each window
-            W = [self.get_feature(x[:, j]).unsqueeze(-1) for j in range(x.shape[1])]
-            W = torch.concatenate(tuple(W), dim=1)
-        else:
-            W = self.get_feature(x)
-        return W
+        if len(x.shape) == 1:
+            x = x[:, None]
+        S = np.abs(np.fft.rfft(x, axis=0))
+        components = []
+        if self.use_stft:
+            # Ordinary STFT
+            components.append(S[self.kmin:self.kmax, :])
+        if self.use_mel:
+            components.append(self.M.dot(S))
+        res = np.concatenate(tuple(components), axis=0)
+        if x.shape == 0:
+            res = res[:, 0]
+        return torch.from_numpy(np.array(res, dtype=np.float32)).to(self.device)
