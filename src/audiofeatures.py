@@ -100,6 +100,14 @@ class AudioFeatureComputer:
         self.use_zcs = use_zcs
         self.device = device
 
+        if use_stft:
+            if use_mel:
+                print("Warning: Using both STFT and Mel-spacing simultaneously.  Did you mean this?")
+            if use_chroma:
+                print("Warning: Using both STFT and Chroma simultaneously.  Did you mean this?")
+            if use_zcs:
+                print("Warning: Using both STFT and zero crossings simultaneously.  Did you mean this?")
+
         if self.use_mel:
             self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
     
