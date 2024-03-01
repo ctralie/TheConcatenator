@@ -14,6 +14,21 @@ from threading import Lock
 from tkinter import Tk, ttk
 
 class ParticleFilter:
+    def reset_state(self):
+        self.neff = [] # Number of effective particles over time
+        self.wsmax = [] # Max weights over time
+        self.ws = [] # Weights over time
+        self.topcounts = [] 
+        self.frame_times = [] # Keep track of time to process each frame
+        self.chosen_idxs = [] # Keep track of chosen indices
+        self.H = [] # Activations of chosen indices
+
+        self.states = torch.randint(self.N, size=(self.P, self.p), dtype=torch.int32).to(self.device) # Particles
+        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32)
+        self.ws = torch.from_numpy(self.ws).to(self.device) # Particle weights
+        self.all_ws = []
+        self.fit = 0 # KL fit
+
     def __init__(self, ycorpus, feature_params, particle_params, device="cpu", use_mic=False):
         """
         ycorpus: ndarray(n_channels, n_samples)
@@ -85,14 +100,6 @@ class ParticleFilter:
         hop = win//2
         self.hop = hop
 
-        self.neff = [] # Number of effective particles over time
-        self.wsmax = [] # Max weights over time
-        self.ws = [] # Weights over time
-        self.topcounts = [] 
-        self.frame_times = [] # Keep track of time to process each frame
-        self.chosen_idxs = [] # Keep track of chosen indices
-        self.H = [] # Activations of chosen indices
-
         ## Step 1: Compute features for corpus
         feature_params["device"] = device
         self.feature_computer = AudioFeatureComputer(**feature_params)
@@ -116,15 +123,12 @@ class ParticleFilter:
         
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
+        self.N = N
         WDenom = torch.sum(WCorpus, dim=0, keepdims=True)
         WDenom[WDenom == 0] = 1
         self.observer = Observer(self.p, WCorpus/WDenom, self.L)
         self.propagator = Propagator(N, self.pd, device)
-        self.states = torch.randint(N, size=(self.P, self.p), dtype=torch.int32).to(device) # Particles
-        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32)
-        self.ws = torch.from_numpy(self.ws).to(device) # Particle weights
-        self.all_ws = []
-        self.fit = 0 # KL fit
+        self.reset_state()
 
         ## Step 3b: Run observer, propagator, and resampler on random data to precompile kernels
         ## so that the first step doesn't lag
@@ -149,6 +153,14 @@ class ParticleFilter:
             self.audio = pyaudio.PyAudio()
             self.recording_started = False
             self.recording_finished = False
+
+            # Run one frame with junk data to precompile all kernels\
+            bstr = np.array(np.random.rand(hop*2), dtype=np.float32)
+            bstr = struct.pack("<"+"f"*hop*2, *bstr)
+            for _ in range(10):
+                self.audio_in(bstr)
+            self.reset_state()
+
             self.tk_root = Tk()
             f = ttk.Frame(self.tk_root, padding=10)
             f.grid()
