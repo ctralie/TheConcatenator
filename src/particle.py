@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import KDTree
+from sklearn.neighbors import KDTree
 from probutils import stochastic_universal_sample, do_KL_torch, count_top_activations, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
 from observer import Observer
 from propagator import Propagator
@@ -67,8 +67,9 @@ class ParticleFilter:
                 Number of iterations for NMF observation probabilities
             P: int
                 Number of particles
-            gamma: float
-                Cosine similarity cutoff
+            proposal_k: float
+                Number of nearest neighbors to use in proposal distribution
+                (if 0, don't use proposal distribution)
             r: int
                 Repeated activations cutoff
             neff_thresh: float
@@ -90,7 +91,7 @@ class ParticleFilter:
         self.pd = particle_params["pd"]
         self.temperature = particle_params["temperature"]
         self.L = particle_params["L"]
-        self.gamma = particle_params["gamma"]
+        self.proposal_k = particle_params["proposal_k"]
         self.r = particle_params["r"]
         self.neff_thresh = particle_params["neff_thresh"]
         self.device = device
@@ -110,16 +111,16 @@ class ParticleFilter:
         self.WCorpus = WCorpus
 
         ## Step 2: Setup KDTree for proposal indices if requested
-        """
+        #"""
         ## TODO: Finish this (useful for huuuuge corpuses)
         self.proposal_tree = None
-        if gamma > 0:
-            WMag = np.sqrt(np.sum(WCorpus.T**2, axis=1))
+        if self.proposal_k > 0:
+            WCorpusNumpy = WCorpus.cpu().numpy()
+            WMag = np.sqrt(np.sum(WCorpusNumpy.T**2, axis=1))
             WMag[WMag == 0] = 1
-            WNorm = WCorpus.T/WMag[:, None] # Vector normalized version for KDTree
-            self.proposal_tree = KDTree(WNorm)
-            self.proposal_d = 2*(1-gamma)**0.5 # KDTree distance corresponding to gamma cosine similarity
-        """
+            WNorm = WCorpusNumpy.T/WMag[:, None] # Vector normalized version for KDTree
+            self.proposal_tree = KDTree(WNorm, leaf_size=30, metric='euclidean')
+        #"""
         
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
@@ -387,6 +388,17 @@ class ParticleFilter:
         WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
         self.fit += (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
+
+        ## Step 7: Sample proposal indices for next iteration based on 
+        ## current observation
+        if self.proposal_k > 0:
+            tic = time.time()
+            Vt = Vt.cpu().numpy()
+            VtNorm = np.sqrt(np.sum(Vt**2))
+            proposal_idxs = []
+            if VtNorm > 0:
+                proposal_idxs = self.proposal_tree.query((Vt/VtNorm)[None, :], self.proposal_k, return_distance=False)+1
+                proposal_idxs = proposal_idxs[proposal_idxs < N].flatten()
 
     def plot_statistics(self):
         """
