@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from numba import jit
 
 def get_activations_diff(H, p):
     """
@@ -164,6 +165,7 @@ def get_marginal_probabilities(states, ws, N):
         probs[state] += w
     return probs / states.shape[1]
 
+@jit(nopython=True)
 def stochastic_universal_sample(ws, target_points):
     """
     Resample indices according to universal stochastic sampling.
@@ -186,9 +188,8 @@ def stochastic_universal_sample(ws, target_points):
     ndarray(P)
         Weights of the new samples
     """
-    counts = np.zeros(ws.size, dtype=int)
+    counts = np.zeros(ws.size)
     w = np.zeros(ws.size+1)
-    choices = np.zeros(target_points, dtype=int)
     order = np.random.permutation(ws.size)
     w[1::] = ws.flatten()[order]
     w = np.cumsum(w)
@@ -201,10 +202,10 @@ def stochastic_universal_sample(ws, target_points):
         counts[order[idx]] += 1
         p = (p + 1/target_points) % 1
     ws_new = np.zeros(ws.size)
-    choices = np.zeros(ws.size, dtype=int)
+    choices = np.zeros(ws.size)
     idx = 0
     for i in range(len(counts)):
-        for w in range(counts[i]):
+        for w in range(int(counts[i])):
             choices[idx] = i
             ws_new[idx] = ws[i]/counts[i]
             idx += 1

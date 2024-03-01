@@ -126,11 +126,12 @@ class ParticleFilter:
         self.all_ws = []
         self.fit = 0 # KL fit
 
-        ## Step 3b: Run observer and propagator on random data to precompile kernels
+        ## Step 3b: Run observer, propagator, and resampler on random data to precompile kernels
         ## so that the first step doesn't lag
         states_dummy = torch.randint(N, size=(self.P, self.p), dtype=torch.int32).to(device)
         self.observer.observe(states_dummy, torch.rand(WCorpus.shape[0], 1, dtype=torch.float32).to(device))
         self.propagator.propagate(states_dummy)
+        stochastic_universal_sample(np.random.rand(self.P), self.P)
 
         ## Step 4: Setup audio buffers
         # Setup a circular buffer that receives in hop samples at a time
@@ -359,7 +360,7 @@ class ParticleFilter:
         if self.neff[-1] < self.neff_thresh:
             ## TODO: torch-ify stochastic universal sample
             choices, _ = stochastic_universal_sample(self.all_ws[-1], len(self.ws))
-            choices = torch.from_numpy(choices).to(self.device)
+            choices = torch.from_numpy(np.array(choices, dtype=int)).to(self.device)
             self.states = self.states[choices, :]
             self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
         
