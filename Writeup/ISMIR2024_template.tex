@@ -92,96 +92,88 @@ Speed/accessibility will impact speed of research and innovation
 \section{Related Work}
 This work builds on a long history of work in Bayesian inference and particle filters, concatenative synthesis, and applied nonnegative matrix factorization (NMF).
 
-From an artistic point of view, the most similar technique to ours is Driedger's 2015 ``Let It Bee'' concatenative musaicing technique \cite{driedger2015let}, which uses NMF to learn activations of spectral templates so that their combination will match a target spectrogram.
+From an artistic point of view, the most similar technique to ours is Driedger et al.'s 2015 ``Let It Bee'' concatenative musaicing technique \cite{driedger2015let}, which uses NMF to learn activations of spectral templates so that their combination will match a target spectrogram.
 \BenEdit{TODO: Talk about Zero Point and Edenic}
 
 
-We now detail some of the mathematics of Driedger's technique, as we borrow a few ideas in our work.  Driedger seeks to $H$ in the equation $V \approx WH$, where $V$ is an $M \times T$ target spectrogram with $M$ frequency bins and $T$ times, $W$ is an $M \times N$ set of $N$ spectral templates that are treated as fixed, and $H$ is a matrix of $N \times T$ learned activations.  For instance, $W$ could be the spectral windows of a collection of buzzing bees and $V$ could be an excerpt from The Beatles' ``Let It Be'' (hence the title).  Driedger uses the Kullback-Liebler (KL) divergence loss, an instance of the more general $\beta$-divergence \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem}, to measure the goodness of fit of $WH$ to $V$.  This loss function is 
+We now detail some of the mathematics of Driedger et al.'s technique, as we borrow a few ideas in our work.  Driedger et al. learn $H$ in the equation $V \approx WH$, where $V$ is an $M \times T$ target spectrogram with $M$ frequency bins and $T$ times, $W$ is an $M \times N$ set of $N$ spectral templates that are treated as fixed, and $H$ is a matrix of $N \times T$ learned activations.  For instance, $W$ could be the spectral windows of a collection of buzzing bees and $V$ could be an excerpt from The Beatles' ``Let It Be'' (hence the title).  Driedger et al. use the Kullback-Liebler (KL) divergence loss, an instance of the more general $\beta$-divergence \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem}, to measure the goodness of fit of $WH$ to $V$.  This loss function is 
 
 \begin{equation}
 \label{eq:klloss}
 D(V || WH) = V \odot \log \left( \frac{V}{WH} \right) - V + WH
 \end{equation}
 
-where $\odot$, $/$, $+$, and $-$ are all applied element-wise.  As Lee/Seung show, choosing the right step size turns gradient descent of Equation~\ref{eq:klloss}, with respect to $W$ and $H$, into {\em multiplicative update rules} that guarantee monotonic convergence.  Driedger keeps $W$ fixed to force the final audio to use exact copies of the templates, so only the update rule for $H$ is relevant.  At iteration $\ell$, this is:
+where $\odot$, $/$, $+$, and $-$ are all applied element-wise.  As Lee/Seung show, choosing the right step size turns gradient descent of Equation~\ref{eq:klloss}, with respect to $W$ and $H$, into {\em multiplicative update rules} that guarantee monotonic convergence.  Driedger et al. keep $W$ fixed to force the final audio to use exact copies of the templates, so only the update rule for $H$ is relevant.  At iteration $\ell$, this is:
 
 \begin{equation}
 \label{eq:klhgrad}
 H_{kt}^{\ell} \gets H_{kt}^{\ell-1} \left( \frac{ \sum_{n} W_{nk} V_{nt} / (WH^{\ell})_{nt} }{ \sum_{n} W_{nk} } \right)
 \end{equation}
 
-Crucially, though, Driedger notes that the update rules in Equation~\ref{eq:klhgrad} alone will lose the timbral character of the templates in $W$.  He hence disrupts ordinary KL gradient descent by performing several increasingly impactful modifications to $H$ before Equation~\ref{eq:klhgrad} in each step, which are eventually set in stone after $L$ total iterations.  First, he avoids repeated activations to avoid a ``jittering'' effect, allowing a particular activation $k$ to only exist once in some iterval based on where it's the strongest:
+Crucially, though, Driedger et al. note that the update rules in Equation~\ref{eq:klhgrad} alone will lose the timbral character of the templates in $W$.  They hence disrupt ordinary KL gradient descent by performing several increasingly impactful modifications to $H$ before Equation~\ref{eq:klhgrad} in each step, which are eventually set in stone after $L$ total iterations.  First, they avoid repeated activations to avoid a ``jittering'' effect, allowing a particular activation $k$ to only exist once in some iterval based on where it's the strongest:
 \begin{equation}
+    \label{eq:driedgerrepeated}
     (H_r)_{kt}^{\ell} \gets \left\{ \begin{array}{cc} H^{\ell-1}_{kt} & H^{\ell-1}_{kt} > H^{\ell-1}_{ks}, |t - s| \leq r \\ H^{\ell-1}_{kt} (1 - \frac{\ell+1}{L}) & \text{otherwise}  \end{array} \right\}
 \end{equation}
-for some chosen $r$.  He also promotes sparsity in a similar way by shrinking all but the top $p$ activations in each column of $H_r$ to create $H_p^{\ell}$.  Finally, he adds a step to encourage {\em time continuous activations} by doing ``diagonal enhancement,'' or by doing a windowed sum down each diagonal of $H_p$, assuming the columns of $W$ are also in a time order\footnote{Similar tricks have been used, for instance in music structure analysis \cite{mcfee2014analyzing}}:
+for some chosen $r$.  They also promote sparsity in a similar way by shrinking all but the top $p$ activations in each column of $H_r$ to create $H_p^{\ell}$.  Finally, they add a step to encourage {\em time continuous activations} by doing ``diagonal enhancement,'' or by doing a windowed sum down each diagonal of $H_p$, assuming the columns of $W$ are also in a time order\footnote{A multiscale music structure analysis work uses a similar idea \cite{mcfee2014analyzing}}:
 
 \begin{equation}
-(H_c)_{kt}^{\ell} = \sum_{i=-c}^c (H_p)^{\ell}_{k+i, t+i}
+    \label{eq:driedgertimecontinuous}
+    (H_c)_{kt}^{\ell} = \sum_{i=-c}^c (H_p)^{\ell}_{k+i, t+i}
 \end{equation}
 
 Since this encourages the algorithm to mash up chunks of $W$ in a time order, it effectively encourages sound grains from the templates than the length of a single window that ordinary NMF would take.  Finally, Equation~\ref{eq:klhgrad} is applied to $H_c^{\ell}$ to obtain $H^{\ell}$.
 
-Overall, these disruptions remove the guarantee that Equation~\ref{eq:klloss} will be minimized, or that it will even monotonically decrease, but Driedger's brilliant insight is that the loss function is merely a guide to choose reasonable activations; a sub-optimal fit leaves room to better preserve timbral characteristics.  We take a similar perspective.
+Overall, these disruptions remove the guarantee that Equation~\ref{eq:klloss} will be minimized, or that it will even monotonically decrease, but Driedger et al.'s brilliant insight is that the loss function is merely a guide to choose reasonable activations; a sub-optimal fit leaves room to better preserve timbral characteristics.  We take a similar perspective.
 
 
 
 \subsubsection{Beyond Driedger}
-Interestingly, the idea of spectrogram decomposition used for concatenative musaicing goes back to the work of \cite{burred2013cross}.
+Interestingly, the idea of spectrogram decomposition used for concatenative musaicing goes back to the work of \cite{burred2013cross}.  Beyond that, the authors of \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} provide some improvements to Driedger et al.'s technique, including sidestepping phase retrieval, which we exploit in our work.
 
-The authors of \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} provide some improvements to Driedger's technique, including sidestepping phase retrieval, which we exploit in our work.
-
-One issue with Driedger's technique is the sources have to be augmented with pitch shifts to hit additional pitches in the target, increasing memory consumption and runtime.  The authors of \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D deconvolutional NMF \cite{schmidt2006nonnegative}.  Specifically, their technique uses the Constant-Q transform, where pitch shifts are modeled as constant shifts of the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for diagonal enhancement.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
+One issue with Driedger et al.'s technique is the sources have to be augmented with pitch shifts to span additional pitches in the target, increasing memory consumption and runtime.  The authors of \cite{foroughmand2017multi, aarabi2018music} sidestep this by using 2D deconvolutional NMF \cite{schmidt2006nonnegative}.  Specifically, their technique uses the Constant-Q transform, where pitch shifts are modeled as constant shifts of the activations instead of the templates, saving memory.  The other added activation dimension models time history and time shifts to avoid the need for the diagonal enhancement of Equation~\ref{eq:driedgertimecontinuous}.  Interestingly, the authors apply 2D NMF to both the source material and the target, so they do not preserve the original sound grains.  However, for our preferred style, we want to take the source grains exactly as they are.
 
 
 
 Schwarz created an offline concatenative synthesis system dubbed ``Caterpillar'' that uses the Viterbi algorithm \cite{schwarz2000system}, which was later approximated with a real time system, "CataRT" that uses a greedy approach instead of the Viterbi algorithm \cite{schwarz2006real, schwarz2008principles}.  Simon's ``audio analogies'' is quite similar \cite{simon2005audio}, but instead of a user controlled traversal through timbral space, they use features from some source (e.g. midi audio) to guide synthesis to a target with a different timbre (e.g. real audio of someone playing a trumpet).  \BenEdit{Need some additional references on granular synthesis}.
 
-Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\em hidden state} is the template to concatenate, and the ``observation'' is a user-controlled trajetory or features from a source timbre, respectively.  The prior transition probabilities are based on temporal continuity.  However, they use the Viterbi algorithm, which is computationally intensive and which needs all time history, so it cannot be applied in real time.  A particle filter is an alternative for real time Bayesian inference \ChrisEdit{find particle filter citations}.  Particle filters have found use in other real time MIR applications such pitch tracking \cite{duan2011state} and beat tracking \cite{heydari2021don}.  We are even aware of one work that uses Bayesian inference on factorial hidden Markov models to track {\em multiple} pitches \cite{wohlmayr2010probabilistic}, which is related to our perspective of tracking multiple source activations (Section~\ref{sec:bayesian})
+Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\em hidden state} is the template to concatenate, and the ``observation'' is a user-controlled trajetory or features from a source timbre, respectively.  The prior transition probabilities are based on temporal continuity.  However, they use the Viterbi algorithm, which is computationally intensive and which needs all time history, so it cannot be applied in real time.  A particle filter is an alternative for real time Bayesian inference \ChrisEdit{find particle filter citations}.  Particle filters have found use in other real time MIR applications such as multi-pitch tracking \cite{duan2011state} and beat tracking \cite{heydari2021don}.  
 
 \section{The Concatenator}
 
 \subsection{Bayesian Formulation}
 \label{sec:bayesian}
 
-    The NMF technique of Driedger is not suitable for realtime applications, both because the gradient update rules of Equation~\ref{eq:klhgrad} are too slow, but also because the equations to promote repeated activations and time-continuous at each entry of $H$ require knowledge of all activations in $H$, including future activations.  We instead turn to a Bayesian Formulation, where we view the templates $V$ in Equation~\ref{eq:nmfdecomposition} as observed 
+    The NMF technique of Driedger is not suitable for realtime applications, both because the gradient update rules of Equation~\ref{eq:klhgrad} are too slow, and because the equations to promote repeated activations and time-continuous at each entry of $H$ require knowledge of all activations in $H$, including future activations.  We instead turn to a Bayesian formulation, where we view the target spectrogram $V$ in Equation~\ref{eq:klloss} as an observation, and the hidden states are the activations of the $N$ templates in the corpus spectrogram $W$ at each time.  We then use a particle filter to efficiently infer the hidden activations (Section~\ref{sec:sampling}).
+    
+    To control polyphony, we model each activation $\vec{h_t}$ as a $p$-sparse vector; that is:
 
-    Given:
-    \begin{enumerate}
-        \item
-            An $M \times N$ matrix $W$ of templates
-        
-        \item
-            An $M \times 1$ observation $y_t$ at time $t$, over $T$ times
-        
-        \item
-            A parameter $p$ for the sparsity, and a $p$-dimensional hidden state variable $x$
+    \begin{equation} 
+        \vec{h_t}[k] \in \left\{0, 1, ..., N-1\right\}, k = 0, 1, ..., p-1 
+    \end{equation}
 
-                \[ x_k \in \left\{0, 1, ..., N-1\right\}, k = 0, 1, ..., p-1 \]
-        
-        \item
-            A parameter $p_d \in [0, 1]$ for diagonal promotion
-        
-        \item
-            Parameters $\sigma$ and $L$ for standard deviation and NMF iterations in the observation function, respectively
-        
-    \end{enumerate}
+    Given associated nonnegative weights $\vec{\alpha_t}[k]$ for each activation, the approximation at time $t$ is 
+    
+    \begin{equation}
+        WH_{nt} = \sum_{k} \vec{\alpha_t}[k]  W_{n, \vec{h_t}[k]}
+    \end{equation}
 
-        Then define the {\em state transition probability} as 
+    To infer $\vec{\alpha_t}$, we apply the update rules of Equation~\ref{eq:klhgrad} for a pre-specified number $L$ of iterations, using the corresponding columns of $W$ prescribed by $\vec{h_t}$:
+    
+    \ChrisEdit{TODO: Add equation}
+    
+    We use Equation~\ref{eq:klloss} to measure the spectral fit to the target, though as in Driedger et al. \cite{driedger2015let} (Equation~\ref{eq:driedgertimecontinuous}), we are willing to sacrifice fit to take longer grains from the corpus $W$.  To that end, we define the prior {\em state transition probability} in the as a Factorial Hidden Markov Model (FHMM) \cite{ghahramani1995factorial}, where components of each activation transition independently from each other:
 
 		\begin{equation}
-        	p(\vec{x_i} = \vec{b} | \vec{x_{i-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b_k = a_k+1  \\ \frac{1-p_d}{N-2} & b_k \neq a_k \\ 0 & b_k = a_k \end{array} \right\}
+        	p(\vec{h_t} = \vec{b} | \vec{h_{t-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b[k] = a[k]+1  \\ \frac{1-p_d}{N-2} & b[k] \neq a[k] \\ 0 & b[k] = a[k] \end{array} \right\}
 		\end{equation}
-
-    
-        The third case is to prevent repeated activations, but this is only enforced on adjacent frames due to the Markov property
-
-        This can be viewed as a Factorial Hidden Markov Model \cite{ghahramani1995factorial}.
-
-		TODO: Define the observation probability
+        FHMMs have been used in similar ways in the context of multi-pitch tracking \cite{wohlmayr2010probabilistic}. As in Driedger et al's Equation~\ref{eq:driedgerrepeated}, the third case is to prevent repeated activations, though we can only enforce it on adjacent frames due to the Markov property (we will address a longer $r$ momentarily). 
+        
+        To track the target in a Bayesian framework, we devise an {\em observation probability} based on $\vec{\alpha_t}$
 
 
 \subsection{Sampling Algorithm}
+\label{sec:sampling}
 
 Discuss particle filter and synthesis details
 
@@ -190,23 +182,14 @@ Discuss particle filter and synthesis details
 
 \subsection{Picking Good Activations}
 
-In practice, a limited number of particles are extremely effective at picking up on activations that fit the target well.  To see why, we can invoke a simple probabilistic argument.  Given a corpus with $N$ sound grains (including pitch shifts) and $P$ particles that capture $p$ activations, suppose that the initial particles are chosen uniformly at random over the set of combinations $\binom{N}{p}$.  Suppose also that we have a hypothetical ``ideal particle'' $\hat{x}$ with the $p$ best activations that work together to match a target.  Then, the probability that at least one particle captures at least one of the top $k$ activations in $\hat{x}$ is  
-
-\begin{equation}
-    \label{eq:initialsampleprob}
-    1 - \left(\binom{N-k}{p} / \binom{N}{p}\right)^P = 1 - \left( \frac{(N-p)...(N-p-k+1)}{N..(N-k+1)}\right) ^P
-\end{equation}
-
-As an example, if $N = 10000$ (~4 minutes of corpus audio for hop=1024, sr=44100), $P = 2000$, and $p=10$, the probabilities are 0.86, 0.98, and 0.998 for $k=1, 2, 3$, respectively.  This is similar to how the ``patch match'' technique in computer graphics \cite{Barnes:2009:PAR, Barnes:2010:TGP} computes nearest neighbors of many nearby patches by starting with a random initializations of nearest neighbors.  Similarly, in that case, chances are that at least one of the patches will be matched to a correct neighbor, and spatially adjacent patches can have their nearest neighbors corrected to neighbors at the corresponding offsets \cite{Barnes:2009:PAR}.  This is analagous to our propagation to {\em time-adjacent} activations in subsequent timesteps.
-
-The above analysis is promising, but such an initialization only happens right at the beginning, and the best activation at any given time transitions as the sound transitions.  The more common way for the activations to adapt to the target is when they are randomly resampled with probability $p_d$.  Under this sampling, the probability of jumping to at least one of the top $k$ activations of $\hat{x}$ at a particular timestep is 
+In practice, a limited number of particles are surprisingly effective at picking up on activations that fit the target well, which we explain with a simple probabilistic argument.  Given a corpus with $N$ sound grains (including pitch shifts) and $P$ particles that each capture $p$ activations, suppose that we have a hypothetical ``ideal particle'' $\hat{h}$ with the $p$ best activations that work together to match a target.  Since activations adapt to the target when they are randomly resampled with probability $p_d$, the probability of jumping to at least one of the top $k$ activations of $\hat{h}$ at a particular timestep is 
 
 \begin{equation}
     \label{eq:timeadjacentprob}
     1 - \left( p_d + (1-p_d) \frac{(N-2-k)}{N} \right)^{pP}
 \end{equation}
 
-This probability is much smaller (about 0.058, 0.077, 0.095 for $k = 1, 2, 3$ using $N=10000$ and $P=2000$).  However, the hop length is quite small (1024/44100 ~= 23 milliseconds), so if we allow the right activation to be chosen slightly before or slightly after the exact time it should be chosen, we wouldn't notice it and the result would still sound good.  Furthermore, for each activation in $\hat{x}$, there are usually several activations in the corpus that sound acceptably similar.  Let $\delta$ be the amount of wiggle room before or after in time for choosing the best activations, and let $w$ be a factor of acceptible activations nearby (e.g. $w=3$ would allow the us to consider each activation in $\hat{x}$ and its closest two in the corpus).  The Equation~\ref{eq:timeadjacentprob} can be modified to:
+This probability is small (about 0.058, 0.077, 0.095 for $k = 1, 2, 3$ using $N=10000$ and $P=2000$).  However, the hop length is quite small (1024/44100 ~= 23 milliseconds), so if we allow the right activation to be chosen slightly before or slightly after the exact time it should be chosen, we wouldn't notice it and the result would still sound good.  Furthermore, for each activation in $\hat{h}$, there are usually several activations in the corpus that sound acceptably similar.  Let $\delta$ be the amount of wiggle room before or after in time for choosing the best activations, and let $w$ be a factor of acceptible activations nearby (e.g. $w=3$ would allow the us to consider each activation in $\hat{x}$ and its closest two in the corpus).  Equation~\ref{eq:timeadjacentprob} is then updated as:
 
 \begin{equation}
     \label{eq:timeadjacentprobmodified}
@@ -215,9 +198,7 @@ This probability is much smaller (about 0.058, 0.077, 0.095 for $k = 1, 2, 3$ us
 
 For example, for $\delta=5$ (about 116 milliseconds of deviation) and $w = 5$, the probabilities are 0.786, 0.929, 0.976 for $k=1, 2, 3$, respectively.  These probabilities all degrade when $N$ gets larger for a larger corpus, but in that case, it is likely that the acceptable $w$ is also larger.
 
-
-TODO: Make a table for a few different choices of $N$ and $P$ for comparison
-
+We also note that once one of the particles catches on to a good activation, it is promoted with a high weight and gets carried on with {\em time-continuous activations}.  This is similar to how the ``patch match'' technique in computer graphics \cite{Barnes:2009:PAR, Barnes:2010:TGP} computes nearest neighbors of many nearby patches by starting with a random initializations of nearest neighbors.  Similarly, in that case, chances are that at least one of the patches will be matched to a correct neighbor, and {\em spatially adjacent} patches correct their nearest neighbors to to neighbors at the corresponding offsets \cite{Barnes:2009:PAR}.
 
 \subsection{Diagonal Enhancement}
 
