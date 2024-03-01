@@ -160,6 +160,7 @@ class ParticleFilter:
             for _ in range(10):
                 self.audio_in(bstr)
             self.reset_state()
+            self.recorded_audio = []
 
             self.tk_root = Tk()
             f = ttk.Frame(self.tk_root, padding=10)
