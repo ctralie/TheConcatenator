@@ -9,6 +9,7 @@ sys.path.append("src")
 from audioutils import load_corpus
 from particle import ParticleFilter
 import time
+import torch
 from scipy.io import wavfile
 
 
@@ -28,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--melBands', type=int, default=40, help="Number of mel bands to use")
     parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
     parser.add_argument('--device', type=str, default="cpu", help="Torch device to use")
+    parser.add_argument("--nThreads", type=int, default=0, help="Use this number of threads in torch if specified")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
     parser.add_argument('--r', type=int, default=7, help="Width of the repeated activation filter")
     parser.add_argument('--p', type=int, default=10, help="Number of simultaneous activations to use in particle filter")
@@ -39,6 +41,10 @@ if __name__ == '__main__':
     parser.add_argument('--temperature', type=float, default=100, help="Target importance.  Higher values mean activations will jump around more to match the target.")
     parser.add_argument('--saveplots', type=int, default=1, help='Save plots of iterations to disk')
     opt = parser.parse_args()
+
+    if opt.nThreads > 0:
+        print("Using {} threads".format(opt.nThreads))
+        torch.set_num_threads(opt.nThreads)
 
     pfinal = opt.p
     if opt.pFinal > 0:
