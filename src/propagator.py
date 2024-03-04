@@ -86,4 +86,8 @@ class Propagator:
         q[new_loc == 2] = (1-self.pd)/(2*other.numel())
 
         ## Correction factor
-        return torch.prod(p, dim=1)/torch.prod(q, dim=1)
+        p = torch.prod(p, dim=1)
+        q = torch.prod(q, dim=1)
+        q[q == 0] = 1
+        p[q == 0] = 1
+        return p/q

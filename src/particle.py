@@ -151,14 +151,16 @@ class ParticleFilter:
             self.audio = pyaudio.PyAudio()
             self.recording_started = False
             self.recording_finished = False
-
+            
             # Run one frame with junk data to precompile all kernels\
-            bstr = np.array(np.random.rand(hop*2), dtype=np.float32)
+            bstr = np.array(0.001*np.random.rand(hop*2), dtype=np.float32)
             bstr = struct.pack("<"+"f"*hop*2, *bstr)
             for _ in range(10):
                 self.audio_in(bstr)
             self.reset_state()
             self.recorded_audio = []
+            self.buf_in *= 0
+            self.buf_out *= 0
 
             self.tk_root = Tk()
             f = ttk.Frame(self.tk_root, padding=10)
