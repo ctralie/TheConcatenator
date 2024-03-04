@@ -165,9 +165,9 @@ Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\e
     We use Equation~\ref{eq:klloss} to measure the spectral fit to the target, though as in Driedger et al. \cite{driedger2015let} (Equation~\ref{eq:driedgertimecontinuous}), we are willing to sacrifice fit to take longer grains from the corpus $W$.  To that end, we define the prior {\em state transition probability} in the as a Factorial Hidden Markov Model (FHMM) \cite{ghahramani1995factorial}, where components of each activation transition independently from each other:
 
 		\begin{equation}
-        	p(\vec{h_t} = \vec{b} | \vec{h_{t-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b[k] = a[k]+1  \\ \frac{1-p_d}{N-2} & b[k] \neq a[k] \\ 0 & b[k] = a[k] \end{array} \right\}
+        	p(\vec{h_t} = \vec{b} | \vec{h_{t-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b[k] = a[k]+1  \\ \frac{1-p_d}{N-1} & \text{otherwise} \end{array} \right\}
 		\end{equation}
-        FHMMs have been used in similar ways in the context of multi-pitch tracking \cite{wohlmayr2010probabilistic}. As in Driedger et al's Equation~\ref{eq:driedgerrepeated}, the third case is to prevent repeated activations, though we can only enforce it on adjacent frames due to the Markov property (we will address a longer $r$ momentarily). 
+        FHMMs have been used in similar ways in the context of multi-pitch tracking \cite{wohlmayr2010probabilistic}. 
         
         To track the target in a Bayesian framework, we devise an {\em observation probability} based on $\vec{\alpha_t}$
 

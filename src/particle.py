@@ -111,8 +111,6 @@ class ParticleFilter:
         self.WCorpus = WCorpus
 
         ## Step 2: Setup KDTree for proposal indices if requested
-        #"""
-        ## TODO: Finish this (useful for huuuuge corpuses)
         self.proposal_tree = None
         if self.proposal_k > 0:
             WCorpusNumpy = WCorpus.cpu().numpy()
@@ -120,7 +118,6 @@ class ParticleFilter:
             WMag[WMag == 0] = 1
             WNorm = WCorpusNumpy.T/WMag[:, None] # Vector normalized version for KDTree
             self.proposal_tree = KDTree(WNorm, leaf_size=30, metric='euclidean')
-        #"""
         
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
@@ -335,7 +332,21 @@ class ParticleFilter:
         Vs = [self.feature_computer(self.win_samples*x[i, :]) for i in range(x.shape[0])]
         Vt = torch.concatenate(tuple(Vs))
         Vt = Vt.view(Vt.numel(), 1)
-        self.propagator.propagate(self.states)
+        ## Step 1b: Sample proposal indices based on the observation
+        proposal_idxs = []
+        VtNorm = 0
+        if self.proposal_k > 0:
+            Vtnp = Vt.cpu().numpy()
+            VtNorm = np.sqrt(np.sum(Vtnp**2))
+            if VtNorm > 0:
+                proposal_idxs = self.proposal_tree.query((Vtnp/VtNorm).T, self.proposal_k, return_distance=False).flatten()
+                proposal_idxs = np.array(proposal_idxs, dtype=np.int32)
+                proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
+        if self.proposal_k == 0 or VtNorm == 0:
+            self.propagator.propagate(self.states)
+        else:
+            # Correction factor for proposal distribution
+            self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs) 
 
         ## Step 2: Apply the observation probability updates
         dots = self.observer.observe(self.states, Vt)
@@ -388,17 +399,6 @@ class ParticleFilter:
         WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
         self.fit += (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
-
-        ## Step 7: Sample proposal indices for next iteration based on 
-        ## current observation
-        if self.proposal_k > 0:
-            tic = time.time()
-            Vt = Vt.cpu().numpy()
-            VtNorm = np.sqrt(np.sum(Vt**2))
-            proposal_idxs = []
-            if VtNorm > 0:
-                proposal_idxs = self.proposal_tree.query((Vt/VtNorm)[None, :], self.proposal_k, return_distance=False)+1
-                proposal_idxs = proposal_idxs[proposal_idxs < N].flatten()
 
     def plot_statistics(self):
         """
