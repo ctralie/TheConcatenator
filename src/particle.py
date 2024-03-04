@@ -122,9 +122,7 @@ class ParticleFilter:
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
         self.N = N
-        WDenom = torch.sum(WCorpus, dim=0, keepdims=True)
-        WDenom[WDenom == 0] = 1
-        self.observer = Observer(self.p, WCorpus/WDenom, self.L)
+        self.observer = Observer(self.p, WCorpus, self.L)
         self.propagator = Propagator(N, self.pd, device)
         self.reset_state()
 

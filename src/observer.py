@@ -16,8 +16,11 @@ class Observer:
             Number of iterations of KL
         """
         self.p = p
-        self.W = W
         self.L = L
+        # Normalize ahead of time
+        WDenom = torch.sum(W, dim=0, keepdims=True)
+        WDenom[WDenom == 0] = 1
+        self.W = W/WDenom 
 
     def observe(self, states, Vt):
         """
@@ -41,8 +44,6 @@ class Observer:
         p = states.shape[1]
         Wi = self.W[:, states]
         Wi = torch.movedim(Wi, 1, 0)
-        Wd = torch.sum(Wi, dim=1).unsqueeze(-1)
-        Wd[Wd == 0] = 1
         hi = torch.rand(P, p, 1).to(Wi)
         Vt = Vt.view(1, Vt.numel(), 1)
         Vt = Vt/torch.sqrt(torch.sum(Vt**2))
@@ -50,7 +51,7 @@ class Observer:
             WH = torch.matmul(Wi, hi)
             WH[WH == 0] = 1
             VLam = Vt/WH
-            hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)/Wd
+            hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)
         Vi = torch.matmul(Wi, hi)
         ViNorms = torch.sqrt(torch.sum(Vi**2, dim=1, keepdims=True))
         ViNorms[ViNorms == 0] = 1
