@@ -2,6 +2,7 @@
 Programmer: Chris Tralie
 Purpose: To serve as an entry point for my new musaicing technique
 """
+import numpy as np
 import argparse
 import sys
 sys.path.append("src")
@@ -84,6 +85,8 @@ if __name__ == '__main__':
         print("Elapsed time offline particle filter: {:.3f}".format(time.time()-tic))    
     generated = pf.get_generated_audio()
     wavfile.write(opt.result, opt.sr, generated)
+
+    print("\n\nMean frame time: {:.3f}ms\nRequired Upper Bound: {:.3f}ms\n".format(1000*np.mean(pf.frame_times), 500*opt.winSize/opt.sr))
     
 
     if opt.saveplots == 1:
