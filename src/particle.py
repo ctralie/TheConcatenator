@@ -127,16 +127,9 @@ class ParticleFilter:
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
         self.N = N
-        self.observer = Observer(self.p, WCorpus, self.L)
+        self.observer = Observer(self.p, WCorpus, self.L, self.temperature)
         self.propagator = Propagator(N, self.pd, device)
         self.reset_state()
-
-        ## Step 3b: Run observer, propagator, and resampler on random data to precompile kernels
-        ## so that the first step doesn't lag
-        states_dummy = torch.randint(N, size=(self.P, self.p), dtype=torch.int32).to(device)
-        self.observer.observe(states_dummy, torch.rand(WCorpus.shape[0], 1, dtype=torch.float32).to(device))
-        self.propagator.propagate(states_dummy)
-        stochastic_universal_sample(np.random.rand(self.P), self.P)
 
         ## Step 4: Setup audio buffers
         # Setup a circular buffer that receives in hop samples at a time
@@ -150,33 +143,85 @@ class ParticleFilter:
         if use_mic:
             self.setup_mic()
             
+    def update_temperature(self, value):
+        with self.temperature_mutex:
+            self.temperature = float(value)
+        self.temp_label.config(text="temperature ({:.1f})".format(self.temperature))
+    
+    def update_pd(self, value):
+        self.pd = float(value)
+        self.pd_label.config(text="pd ({:.5f})".format(self.pd))
+        self.propagator.update_pd(self.pd)
+    
+    def update_pfinal(self, value):
+        self.pfinal = int(float(value))
+        self.pfinal_label.config(text="pfinal ({})".format(self.pfinal))
+        self.pfinal_slider.config(value=self.pfinal)
 
     def setup_mic(self):
         hop = self.win//2
         self.recorded_audio = []
-        self.mutex = Lock()
+        self.frame_mutex = Lock()
+        self.temperature_mutex = Lock()
         self.processing_frame = False
         self.audio = pyaudio.PyAudio()
         self.recording_started = False
         self.recording_finished = False
-        
-        ## Step 1: Run one frame with junk data to precompile all kernels\
-        bstr = np.array(0.001*np.random.rand(hop*2), dtype=np.float32)
+
+        ## Step 1: Setup menus
+        self.tk_root = Tk()
+        f = ttk.Frame(self.tk_root, padding=10)
+        f.grid()
+        row = 0
+        ttk.Label(f, text="The Concatenator Real Time!").grid(column=0, row=row)
+        row += 1
+        self.record_button = ttk.Button(f, text="Start Recording", command=self.start_audio_recording)
+        self.record_button.grid(column=0, row=row)
+        row += 1
+        # Temperature slider
+        self.temp_label = ttk.Label(f, text="temperature")
+        self.temp_label.grid(column=1, row=row)
+        self.temp_slider = ttk.Scale(f, from_=0, to=max(50, self.temperature*1.5), length=400, value=self.temperature, orient="horizontal")
+        ## TODO: This is a hacky way to get things to update on release!
+        fn = lambda _: self.update_temperature(self.temp_slider.get())
+        for i in [1, 2, 3]:
+            self.temp_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.temp_slider.grid(column=0, row=row)
+        self.update_temperature(self.temperature)
+        row += 1
+        # pd slider
+        self.pd_label = ttk.Label(f, text="pd")
+        self.pd_label.grid(column=1, row=row)
+        mx = 1-2/self.P # Leave enough room to jump to at least one particle
+        self.pd_slider = ttk.Scale(f, from_=0.5, to=mx, length=400, value=self.pd, orient="horizontal")
+        ## TODO: This is a hacky way to get things to update on release!
+        fn = lambda _: self.update_pd(self.pd_slider.get())
+        for i in [1, 2, 3]:
+            self.pd_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.pd_slider.grid(column=0, row=row)
+        self.update_pd(self.pd)
+        row += 1
+        """
+        # pfinal slider (TODO: Finish this)
+        self.pfinal_label = ttk.Label(f, text="pfinal")
+        self.pfinal_label.grid(column=1, row=row)
+        self.pfinal_slider = ttk.Scale(f, from_=1, to=self.p, length=400, value=self.pfinal, orient="horizontal", command=self.update_pfinal)
+        self.pfinal_slider.grid(column=0, row=row)
+        self.update_pfinal(self.pfinal)
+        """
+
+        ## Step 2: Run one frame with dummy data to precompile all kernels
+        ## Use high amplitude random noise to get it to jump around a lot
+        bstr = np.array(np.random.rand(hop*2), dtype=np.float32)
         bstr = struct.pack("<"+"f"*hop*2, *bstr)
-        for _ in range(10):
+        for _ in range(20):
             self.audio_in(bstr)
         self.reset_state()
         self.recorded_audio = []
         self.buf_in *= 0
         self.buf_out *= 0
 
-        ## Step 2: Setup menus
-        self.tk_root = Tk()
-        f = ttk.Frame(self.tk_root, padding=10)
-        f.grid()
-        ttk.Label(f, text="The Concatenator Real Time!").grid(column=0, row=0)
-        self.record_button = ttk.Button(f, text="Start Recording", command=self.start_audio_recording)
-        self.record_button.grid(column=0, row=1)
+        ## Step 3: Start loop!
         self.tk_root.mainloop()
 
     def start_audio_recording(self):
@@ -210,11 +255,10 @@ class ParticleFilter:
         """
         from scipy import sparse
         N = self.WCorpus.shape[1]
-        p = self.states.shape[1]
         T = len(self.H)
         vals = np.array([h.cpu().numpy() for h in self.H]).flatten()
         rows = np.array([c.cpu().numpy() for c in self.chosen_idxs], dtype=int).flatten()
-        cols = np.array(np.ones((1, p))*np.arange(T)[:, None], dtype=int).flatten()
+        cols = np.array(np.ones((1, self.pfinal))*np.arange(T)[:, None], dtype=int).flatten()
         H = sparse.coo_matrix((vals, (rows, cols)), shape=(N, T))
         return H.toarray()
     
@@ -258,7 +302,7 @@ class ParticleFilter:
         tic = time.time()
         if self.use_mic:
             return_early = False
-            with self.mutex:
+            with self.frame_mutex:
                 if self.processing_frame:
                     # We're already in the middle of processing a frame,
                     # so pass the audio through
@@ -287,7 +331,7 @@ class ParticleFilter:
         idx = hop*(T-1) # Start index
         ret = (self.buf_out[:, idx:idx+hop].T).flatten()
         if self.use_mic:
-            with self.mutex:
+            with self.frame_mutex:
                 self.processing_frame = False
         return struct.pack("<"+"f"*ret.size, *ret), pyaudio.paContinue
     
@@ -330,26 +374,31 @@ class ParticleFilter:
             self.audio_in(ytarget[:, i*hop:(i+1)*hop])
         return self.get_generated_audio()
     
-    def aggregate_top_activations(self, diag_fac=5):
+    def aggregate_top_activations(self, diag_fac=10, diag_len=5):
         """
-        Aggregate activations from the top weight 2*p particles together
+        Aggregate activations from the top weight 0.1*self.P particles together
         to have them vote on the best activations
 
         Parameters
         ----------
         diag_fac: float
             Factor by which to promote probabilities of activations following
-            activations chosen in the last step
+            activations chosen in the last steps
+        diag_len: int
+            Number of steps to look back for diagonal promotion
         """
         N = self.WCorpus.shape[1]
         probs = torch.zeros(N).to(self.ws)
-        max_particles = torch.topk(self.ws, 2*self.p, largest=True)[1]
+        max_particles = torch.topk(self.ws, int(0.1*self.P), largest=True)[1]
         for state, w in zip(self.states[max_particles], self.ws[max_particles]):
             probs[state] += w
         # Promote states that follow the last state that was chosen
-        if len(self.chosen_idxs) > 0:
-            last_state = self.chosen_idxs[-1] + 1
-            probs[last_state[last_state < N]] *= diag_fac
+        promoted_idxs = torch.zeros(N).to(self.ws)
+        for dc in range(1, min(diag_len, len(self.chosen_idxs))+1):
+            last_state = self.chosen_idxs[-dc]+dc
+            last_state = last_state[last_state < N]
+            promoted_idxs[last_state] = 1
+        probs[promoted_idxs > 0] *= diag_fac
         # Zero out last ones to prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
             probs[self.chosen_idxs[-dc]] = 0
@@ -387,19 +436,11 @@ class ParticleFilter:
             self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs) 
 
         ## Step 2: Apply the observation probability updates
-        kls = self.observer.observe(self.states, Vt)
-        obs_prob = torch.exp(-self.temperature*kls)
-        denom = torch.sum(obs_prob)
-        if denom < 1e-40:
-            obs_prob[:] = 1/obs_prob.numel()
-        else:
-            obs_prob /= denom
-        self.ws *= obs_prob
+        self.ws *= self.observer.observe(self.states, Vt)
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
         self.wsmax.append(torch.max(self.ws).item())
-
         if self.use_top_particle:
             top_idxs = self.states[torch.argmax(self.ws), :]
         else:
