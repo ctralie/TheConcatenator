@@ -388,7 +388,11 @@ class ParticleFilter:
         ## Step 2: Apply the observation probability updates
         kls = self.observer.observe(self.states, Vt)
         obs_prob = torch.exp(-self.temperature*kls)
-        obs_prob /= torch.sum(obs_prob)
+        denom = torch.sum(obs_prob)
+        if denom < 1e-40:
+            obs_prob[:] = 1/obs_prob.numel()
+        else:
+            obs_prob /= denom
         self.ws *= obs_prob
 
         ## Step 3: Figure out the activations for this timestep
@@ -440,7 +444,7 @@ class ParticleFilter:
         plt.subplot(231)
         plt.plot(active_diffs)
         plt.legend(["Particle Filter: Mean {:.3f}".format(np.mean(active_diffs))])
-        plt.title("Activation Changes over Time, Temperature {}".format(self.temperature))
+        plt.title("Activation Changes over Time, p={}, proposal_k={}".format(self.p, self.proposal_k))
         plt.xlabel("Timestep")
 
         plt.subplot(232)
@@ -465,7 +469,7 @@ class ParticleFilter:
         plt.subplot(235)
         plt.plot(self.neff)
         plt.xlabel("Timestep")
-        plt.title("Number of Effective Particles (Median {:.2f})".format(np.median(self.neff)))
+        plt.title("Number of Effective Particles (P={}, Median {:.2f})".format(self.P, np.median(self.neff)))
 
         plt.subplot(236)
         diags = get_diag_lengths(H, p)
@@ -473,4 +477,4 @@ class ParticleFilter:
         plt.legend(["Particle Filter Mean: {:.3f} ($p_d$={})".format(np.mean(diags), self.pd)])
         plt.xlabel("Diagonal Length")
         plt.ylabel("Counts")
-        plt.title("Diagonal Lengths")
+        plt.title("Diagonal Lengths (Temperature {})".format(self.temperature))

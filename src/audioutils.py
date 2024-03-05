@@ -99,7 +99,6 @@ def load_corpus(path, sr, stereo):
     files = [path]
     if os.path.isdir(path):
         files = glob.glob(path + "/*")
-    N = 0
     for f in files:
         try:
             x, sr = librosa.load(f, sr=sr, mono=not stereo)
@@ -109,6 +108,9 @@ def load_corpus(path, sr, stereo):
             samples.append(x)
         except:
             pass
+    if len(samples) == 0:
+        print("Error: No usable files found at ", path)
+    assert(len(samples) > 0)
     if stereo:
         x = np.concatenate(samples, axis=1)
     else:
