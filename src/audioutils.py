@@ -23,7 +23,14 @@ def blackman_harris_window(N):
     t = np.arange(N)/N
     return a0 - a1*np.cos(2*np.pi*t) + a2*np.cos(4*np.pi*t) - a3*np.cos(6*np.pi*t)
 
-def get_windowed(x, hop, win, win_fn=hann_window):
+def tri_window(N):
+    h = N//2
+    ret = np.zeros(N)
+    ret[0:h] = np.linspace(0, 1, h)
+    ret[h:2*h] = np.linspace(1, 0, h)
+    return ret
+
+def get_windowed(x, hop, win, win_fn=hann_window, dc_normalize=True):
     """
     Stack sliding windows of audio, multiplied by a window function,
     into the columns of a 2D array
@@ -36,10 +43,12 @@ def get_windowed(x, hop, win, win_fn=hann_window):
         Hop length
     win_fn: int -> ndarray(win)
         Window function
+    dc_normalize: bool
+        If True, normalize the windows to sum to 0 after windowing
 
     Returns
     -------
-    torch.tensor(win, n_windows)
+    ndarray(win, n_windows)
         Windowed audio
     """
     nwin = int(np.ceil((x.size-win)/hop))+1
@@ -47,7 +56,10 @@ def get_windowed(x, hop, win, win_fn=hann_window):
     for j in range(nwin):
         xj = x[hop*j:hop*j+win]
         S[0:xj.size, j] = xj
-    return S*win_fn(win)[:, None]
+    S = S*win_fn(win)[:, None]
+    if dc_normalize:
+        S -= np.mean(S, axis=0, keepdims=True)
+    return S
 
 def do_windowed_sum(WSound, H, win, hop):
     """
@@ -104,7 +116,6 @@ def load_corpus(path, sr, stereo):
             x, sr = librosa.load(f, sr=sr, mono=not stereo)
             if stereo and len(x.shape) == 1:
                 x = np.array([x, x])
-            x -= np.mean(x, axis=1, keepdims=True)
             samples.append(x)
         except:
             pass

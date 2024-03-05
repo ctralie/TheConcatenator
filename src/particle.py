@@ -5,7 +5,7 @@ from sklearn.neighbors import KDTree
 from probutils import stochastic_universal_sample, do_KL_torch, count_top_activations, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
 from observer import Observer
 from propagator import Propagator
-from audioutils import get_windowed, hann_window
+from audioutils import get_windowed, hann_window, tri_window
 from audiofeatures import AudioFeatureComputer
 import pyaudio
 import struct
@@ -87,7 +87,6 @@ class ParticleFilter:
         tic = time.time()
         win = feature_params["win"]
         sr = feature_params["sr"]
-        self.win_samples = np.array(hann_window(win), dtype=np.float32)
         self.p = particle_params["p"]
         self.P = particle_params["P"]
         self.pfinal = particle_params["pfinal"]
@@ -111,6 +110,8 @@ class ParticleFilter:
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
         self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
+        # Corpus is analyzed with hann window
+        self.win_samples = np.array(hann_window(win), dtype=np.float32)
         WCorpus = torch.concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
         self.WCorpus = WCorpus
 
@@ -442,10 +443,14 @@ class ParticleFilter:
         repeated_intervals = get_repeated_activation_itervals(H, p)
         
         plt.subplot(231)
-        plt.plot(active_diffs)
+        active_diffs = np.cumsum(active_diffs)
+        avgwin = 10
+        active_diffs = (active_diffs[avgwin::] - active_diffs[0:-avgwin])/avgwin
+        t = np.arange(active_diffs.size)*self.win/(self.sr*2)
+        plt.plot(t, active_diffs)
         plt.legend(["Particle Filter: Mean {:.3f}".format(np.mean(active_diffs))])
         plt.title("Activation Changes over Time, p={}, proposal_k={}".format(self.p, self.proposal_k))
-        plt.xlabel("Timestep")
+        plt.xlabel("Time (Seconds)")
 
         plt.subplot(232)
         plt.hist(active_diffs, bins=np.arange(30))
