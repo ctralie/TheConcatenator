@@ -73,7 +73,7 @@ class Propagator:
         new_loc = torch.ones(states.shape, dtype=torch.int32).to(self.device)
         new_loc[move_forward == 1] = 0
         
-        ## Sample from proposal indices with probability (1-pd)/2
+        ## Sample from proposal indices with probability (1-pd)(v-1)/v
         new_loc[new_loc==1] = (1+torch.randint(v, size=(torch.sum(new_loc),), dtype=torch.int32)).to(self.device)
         n_proposal = torch.sum(new_loc > 1)
         idxs = torch.randint(proposal.numel(), size=(n_proposal,), dtype=torch.int32).to(self.device)
@@ -83,7 +83,7 @@ class Propagator:
         p[new_loc > 1][states[new_loc > 1] + 1 == proposal[idxs]] += self.pd
         states[new_loc > 1] = proposal[idxs]
 
-        ## Sample from other indices with probability (1-pd)/2
+        ## Sample from other indices with probability (1-pd)/v
         n_other = torch.sum(new_loc == 1)
         idxs = torch.randint(other.numel(), size=(n_other,), dtype=torch.int32).to(self.device)
         q[new_loc == 1] = (1/v)*(1-self.pd)/other.numel()

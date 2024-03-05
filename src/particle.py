@@ -74,6 +74,9 @@ class ParticleFilter:
                 Repeated activations cutoff
             neff_thresh: float
                 Number of effective particles below which to resample
+            use_top_particle: bool
+                If True, only take activations from the top particle at each step.
+                If False, aggregate 
         }
         device: string
             Device string for torch
@@ -94,6 +97,7 @@ class ParticleFilter:
         self.proposal_k = particle_params["proposal_k"]
         self.r = particle_params["r"]
         self.neff_thresh = particle_params["neff_thresh"]
+        self.use_top_particle = particle_params["use_top_particle"]
         self.device = device
         self.use_mic = use_mic
         self.win = win
@@ -143,31 +147,36 @@ class ParticleFilter:
 
         ## Step 5: If we're using the mic, set that up
         if use_mic:
-            self.recorded_audio = []
-            self.mutex = Lock()
-            self.processing_frame = False
-            self.audio = pyaudio.PyAudio()
-            self.recording_started = False
-            self.recording_finished = False
+            self.setup_mic()
             
-            # Run one frame with junk data to precompile all kernels\
-            bstr = np.array(0.001*np.random.rand(hop*2), dtype=np.float32)
-            bstr = struct.pack("<"+"f"*hop*2, *bstr)
-            for _ in range(10):
-                self.audio_in(bstr)
-            self.reset_state()
-            self.recorded_audio = []
-            self.buf_in *= 0
-            self.buf_out *= 0
 
-            self.tk_root = Tk()
-            f = ttk.Frame(self.tk_root, padding=10)
-            f.grid()
-            ttk.Label(f, text="The Concatenator Real Time!").grid(column=0, row=0)
-            self.record_button = ttk.Button(f, text="Start Recording", command=self.start_audio_recording)
-            self.record_button.grid(column=0, row=1)
-            self.tk_root.mainloop()
-            
+    def setup_mic(self):
+        hop = self.win//2
+        self.recorded_audio = []
+        self.mutex = Lock()
+        self.processing_frame = False
+        self.audio = pyaudio.PyAudio()
+        self.recording_started = False
+        self.recording_finished = False
+        
+        ## Step 1: Run one frame with junk data to precompile all kernels\
+        bstr = np.array(0.001*np.random.rand(hop*2), dtype=np.float32)
+        bstr = struct.pack("<"+"f"*hop*2, *bstr)
+        for _ in range(10):
+            self.audio_in(bstr)
+        self.reset_state()
+        self.recorded_audio = []
+        self.buf_in *= 0
+        self.buf_out *= 0
+
+        ## Step 2: Setup menus
+        self.tk_root = Tk()
+        f = ttk.Frame(self.tk_root, padding=10)
+        f.grid()
+        ttk.Label(f, text="The Concatenator Real Time!").grid(column=0, row=0)
+        self.record_button = ttk.Button(f, text="Start Recording", command=self.start_audio_recording)
+        self.record_button.grid(column=0, row=1)
+        self.tk_root.mainloop()
 
     def start_audio_recording(self):
         self.stream = self.audio.open(format=pyaudio.paFloat32, 
@@ -320,8 +329,36 @@ class ParticleFilter:
             self.audio_in(ytarget[:, i*hop:(i+1)*hop])
         return self.get_generated_audio()
     
+    def aggregate_top_activations(self, diag_fac=5):
+        """
+        Aggregate activations from the top weight 2*p particles together
+        to have them vote on the best activations
+
+        Parameters
+        ----------
+        diag_fac: float
+            Factor by which to promote probabilities of activations following
+            activations chosen in the last step
+        """
+        N = self.WCorpus.shape[1]
+        probs = torch.zeros(N).to(self.ws)
+        max_particles = torch.topk(self.ws, 2*self.p, largest=True)[1]
+        for state, w in zip(self.states[max_particles], self.ws[max_particles]):
+            probs[state] += w
+        # Promote states that follow the last state that was chosen
+        if len(self.chosen_idxs) > 0:
+            last_state = self.chosen_idxs[-1] + 1
+            probs[last_state[last_state < N]] *= diag_fac
+        # Zero out last ones to prevent repeated activations
+        for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
+            probs[self.chosen_idxs[-dc]] = 0
+        return torch.topk(probs, self.pfinal, largest=True)[1]
+
     def process_window(self, x):
         """
+        Run the particle filter for one step given the audio
+        in one full window
+
         x: ndarray(n_channels, win)
             Window to process
         """
@@ -349,30 +386,19 @@ class ParticleFilter:
             self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs) 
 
         ## Step 2: Apply the observation probability updates
-        dots = self.observer.observe(self.states, Vt)
-        dots[dots < 1e-7] = 1e-7
-        obs_prob = self.temperature*torch.log(dots)
-        obs_prob -= torch.max(obs_prob)
-        obs_prob = torch.exp(obs_prob)
+        kls = self.observer.observe(self.states, Vt)
+        obs_prob = torch.exp(-self.temperature*kls)
         obs_prob /= torch.sum(obs_prob)
         self.ws *= obs_prob
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
         self.wsmax.append(torch.max(self.ws).item())
-        N = self.WCorpus.shape[1]
-        probs = torch.zeros(N).to(self.ws)
-        max_particles = torch.topk(self.ws, 2*p, largest=True)[1]
-        for state, w in zip(self.states[max_particles], self.ws[max_particles]):
-            probs[state] += w
-        # Promote states that follow the last state that was chosen
-        if len(self.chosen_idxs) > 0:
-            last_state = self.chosen_idxs[-1] + 1
-            probs[last_state[last_state < N]] *= 5
-        # Zero out last ones to prevent repeated activations
-        for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
-            probs[self.chosen_idxs[-dc]] = 0
-        top_idxs = torch.topk(probs, self.pfinal, largest=True)[1]
+
+        if self.use_top_particle:
+            top_idxs = self.states[torch.argmax(self.ws), :]
+        else:
+            top_idxs = self.aggregate_top_activations()
         self.chosen_idxs.append(top_idxs)
 
         h = do_KL_torch(self.WCorpus[:, top_idxs], Vt[:, 0], self.L)
@@ -398,7 +424,8 @@ class ParticleFilter:
         ## Step 6: Accumulate KL term for fit
         WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
-        self.fit += (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
+        kl = (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
+        self.fit += kl
 
     def plot_statistics(self):
         """

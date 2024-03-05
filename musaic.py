@@ -37,6 +37,7 @@ if __name__ == '__main__':
     parser.add_argument('--pd', type=float, default=0.99, help="Probability of sticking to an activation (0 is no stick, closer to 1 is longer continuous activations)")
     parser.add_argument('--L', type=int, default=10, help="Number of KL iterations")
     parser.add_argument('--particles', type=int, default=2000, help="Number of particles in the particle filter")
+    parser.add_argument('--useTopParticle', type=int, default=0, help="If true, take activations only from the top particle.  Otherwise, aggregate them")
     parser.add_argument('--proposalK', type=int, default=0, help="Number of nearest neighbors to use in proposal distribution (if 0, don't use proposal distribution)")
     parser.add_argument('--temperature', type=float, default=100, help="Target importance.  Higher values mean activations will jump around more to match the target.")
     parser.add_argument('--saveplots', type=int, default=1, help='Save plots of iterations to disk')
@@ -75,7 +76,8 @@ if __name__ == '__main__':
         P=opt.particles,
         proposal_k=opt.proposalK,
         r=opt.r,
-        neff_thresh=0.1*opt.particles
+        neff_thresh=0.1*opt.particles,
+        use_top_particle=opt.useTopParticle == 1
     )
     pf = ParticleFilter(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic")
     if opt.target == "mic":

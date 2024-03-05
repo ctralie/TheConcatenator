@@ -46,14 +46,10 @@ class Observer:
         Wi = torch.movedim(Wi, 1, 0)
         hi = torch.rand(P, p, 1).to(Wi)
         Vt = Vt.view(1, Vt.numel(), 1)
-        Vt = Vt/torch.sqrt(torch.sum(Vt**2))
         for _ in range(self.L):
             WH = torch.matmul(Wi, hi)
             WH[WH == 0] = 1
             VLam = Vt/WH
             hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)
         Vi = torch.matmul(Wi, hi)
-        ViNorms = torch.sqrt(torch.sum(Vi**2, dim=1, keepdims=True))
-        ViNorms[ViNorms == 0] = 1
-        Vi /= ViNorms
-        return torch.sum(Vt*Vi, dim=1)[:, 0]
+        return torch.mean(Vt*torch.log(Vt/Vi) - Vt + Vi, dim=1)[:, 0]
