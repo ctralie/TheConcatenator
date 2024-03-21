@@ -36,6 +36,8 @@ class Propagator:
     def propagate(self, states):
         """
         Advance each particle forward randomly based on the transition model
+        NOTE: For ease of implementation, the probability of remaining fixed
+        is technically p + 1/N, but that should be very close to p
 
         Parameters
         ----------

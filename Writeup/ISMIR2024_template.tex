@@ -100,14 +100,14 @@ We now detail some of the mathematics of Driedger et al.'s technique, as we borr
 
 \begin{equation}
 \label{eq:klloss}
-D(V || WH) = V \odot \log \left( \frac{V}{WH} \right) - V + WH
+D(V || WH) = \sum V \odot \log \left( \frac{V}{WH} \right) - V + WH
 \end{equation}
 
-where $\odot$, $/$, $+$, and $-$ are all applied element-wise.  As Lee/Seung show, choosing the right step size turns gradient descent of Equation~\ref{eq:klloss}, with respect to $W$ and $H$, into {\em multiplicative update rules} that guarantee monotonic convergence.  Driedger et al. keep $W$ fixed to force the final audio to use exact copies of the templates, so only the update rule for $H$ is relevant.  At iteration $\ell$, this is:
+where $\odot$, $/$, $+$, and $-$ are all applied element-wise, and the sum is taken over all elements of the resulting matrix.  As Lee/Seung show, choosing the right step size turns gradient descent of Equation~\ref{eq:klloss}, with respect to $W$ and $H$, into {\em multiplicative update rules} that guarantee monotonic convergence.  Driedger et al. keep $W$ fixed to force the final audio to use exact copies of the templates, so only the update rule for $H$ is relevant.  At iteration $\ell$, this is:
 
 \begin{equation}
 \label{eq:klhgrad}
-H_{kt}^{\ell} \gets H_{kt}^{\ell-1} \left( \frac{ \sum_{n} W_{nk} V_{nt} / (WH^{\ell})_{nt} }{ \sum_{n} W_{nk} } \right)
+H_{kt}^{\ell} \gets H_{kt}^{\ell-1} \left( \frac{ \sum_{n} W_{nk} V_{nt} / (WH^{\ell-1})_{nt} }{ \sum_{n} W_{nk} } \right)
 \end{equation}
 
 Crucially, though, Driedger et al. note that the update rules in Equation~\ref{eq:klhgrad} alone will lose the timbral character of the templates in $W$.  They hence disrupt ordinary KL gradient descent by performing several increasingly impactful modifications to $H$ before Equation~\ref{eq:klhgrad} in each step, which are eventually set in stone after $L$ total iterations.  First, they avoid repeated activations to avoid a ``jittering'' effect, allowing a particular activation $k$ to only exist once in some iterval based on where it's the strongest:
@@ -122,7 +122,7 @@ for some chosen $r$.  They also promote sparsity in a similar way by shrinking a
     (H_c)_{kt}^{\ell} = \sum_{i=-c}^c (H_p)^{\ell}_{k+i, t+i}
 \end{equation}
 
-Since this encourages the algorithm to mash up chunks of $W$ in a time order, it effectively encourages sound grains from the templates than the length of a single window that ordinary NMF would take.  Finally, Equation~\ref{eq:klhgrad} is applied to $H_c^{\ell}$ to obtain $H^{\ell}$.
+Since this encourages the algorithm to mash up chunks of $W$ in a time order, it effectively encourages sound grains from the templates than the length of a single window that ordinary NMF would take.  Finally, Drieger at all apply Equation~\ref{eq:klhgrad} to $H_c^{\ell}$ instead of $H^{\ell-1}$ to obtain $H^{\ell}$.
 
 Overall, these disruptions remove the guarantee that Equation~\ref{eq:klloss} will be minimized, or that it will even monotonically decrease, but Driedger et al.'s brilliant insight is that the loss function is merely a guide to choose reasonable activations; a sub-optimal fit leaves room to better preserve timbral characteristics.  We take a similar perspective.
 
@@ -144,39 +144,94 @@ Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\e
 \subsection{Bayesian Formulation}
 \label{sec:bayesian}
 
-    The NMF technique of Driedger is not suitable for realtime applications, both because the gradient update rules of Equation~\ref{eq:klhgrad} are too slow, and because the equations to promote repeated activations and time-continuous at each entry of $H$ require knowledge of all activations in $H$, including future activations.  We instead turn to a Bayesian formulation, where we view the target spectrogram $V$ in Equation~\ref{eq:klloss} as an observation, and the hidden states are the activations of the $N$ templates in the corpus spectrogram $W$ at each time.  We then use a particle filter to efficiently infer the hidden activations (Section~\ref{sec:sampling}).
+    The NMF technique of Driedger is not suitable for realtime applications, both because the gradient update rules of Equation~\ref{eq:klhgrad} are too slow, and because the equations to promote repeated activations and time-continuous at each entry of $H$ require knowledge of all activations in $H$, including future activations.  We instead turn to a Bayesian formulation, where we view the target spectrogram (or some derived feature) $V$ as the observation, where the $t^{\text{th}}$ column of $V$ is an observation at time $t$.  The hidden states are the activations of the $N$ templates in the corpus spectrogram $W$ at each time.  We then use a particle filter to efficiently infer the hidden activations (Section~\ref{sec:sampling}).
     
-    To control polyphony, we model each activation $\vec{h_t}$ as a $p$-sparse vector; that is:
+    Henceforth, we will refer to the observations, or columns of $V$ at time $t$ as vectors $\vec{v}_t$ to emphasize that the data is streaming, and we focus on one timestep $t$ at a time.  
+    
+    \textbf{State space.} To keep our state space simple, we decouple which activations are active from their weights; we model the former only as our hidden state, while we infer the weights as a best fit under the KL-loss (Equation~\ref{eq:klloss}).  To control for polyphany directly, we use a {\em $p$-sparse} integer-valued vector $\vec{s}_t \in Z^p$ as our hidden state.  This vector indexes the $p$ templates that are active at time $t$, where $p$ is fixed ahead of time.  For convenience of implementation, we allow repetitions of template indices, and the indices are in no particular order\footnote{One could also model $\vec{s}_t$ as an unordered set without repetition, which would identify all $\vec{s}_t$'s that are permutations of each other.  This would reduce the cardinality of the state space to $\binom{N}{k}$ at the cost of a more cumbersome implementation.  We also rely on some redundancy of good state samples in our particle filter, so the redundancy of our simpler scheme does not hurt us.};
 
     \begin{equation} 
-        \vec{h_t}[k] \in \left\{0, 1, ..., N-1\right\}, k = 0, 1, ..., p-1 
+        \label{eq:statevector}
+        \vec{s_t}[k] \in \left\{0, 1, ..., N-1\right\}, k = 0, 1, ..., p-1 
     \end{equation}
 
-    Given associated nonnegative weights $\vec{\alpha_t}[k]$ for each activation, the approximation at time $t$ is 
+    In addition to being sparse, a lower $p$ also reduces the cardinality $N^p$ of the state space, which is helpful for inference, though there are some caveats given a ``lottery ticket'' advantage of randomly choosing more activations, as we explain in Section~\ref{sec:quantitativeevaluation}.  We then infer the associated nonnegative weights $\vec{h_t}[k]$ for each activation to give the approximation $\vec{\Lambda_t}$ at time $t$
     
     \begin{equation}
-        WH_{nt} = \sum_{k} \vec{\alpha_t}[k]  W_{n, \vec{h_t}[k]}
+        \label{eq:approximation}
+        \vec{\Lambda_t}[n] = \sum_{k} \vec{h_t}[k]  W_{n, \vec{s_t}[k]}
     \end{equation}
 
-    To infer $\vec{\alpha_t}$, we apply the update rules of Equation~\ref{eq:klhgrad} for a pre-specified number $L$ of iterations, using the corresponding columns of $W$ prescribed by $\vec{h_t}$:
+    In particular, given $W$, $\vec{s_t}$, and $\vec{v_t}$, we apply the update rules of Equation~\ref{eq:klhgrad} for a pre-specified number $L$ of iterations, using the corresponding columns $\vec{s_t}$ of $W$
+
+    \begin{equation}
+        \label{eq:sparseklhgrad}
+        \vec{h_t}^{\ell}[k]  \gets \vec{h_t}^{\ell-1} \left(  \frac{\sum_n (W_{n, \vec{s_t}[k]}) (\vec{v_t}[n]) / (\vec{\Lambda_t}^{\ell-1}[n]) }{ \sum_{n} W_{n, \vec{s_t}[k]}} \right)
+    \end{equation}
     
-    \ChrisEdit{TODO: Add equation}
-    
-    We use Equation~\ref{eq:klloss} to measure the spectral fit to the target, though as in Driedger et al. \cite{driedger2015let} (Equation~\ref{eq:driedgertimecontinuous}), we are willing to sacrifice fit to take longer grains from the corpus $W$.  To that end, we define the prior {\em state transition probability} in the as a Factorial Hidden Markov Model (FHMM) \cite{ghahramani1995factorial}, where components of each activation transition independently from each other:
 
-		\begin{equation}
-        	p(\vec{h_t} = \vec{b} | \vec{h_{t-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b[k] = a[k]+1  \\ \frac{1-p_d}{N-1} & \text{otherwise} \end{array} \right\}
-		\end{equation}
-        FHMMs have been used in similar ways in the context of multi-pitch tracking \cite{wohlmayr2010probabilistic}. 
-        
-        To track the target in a Bayesian framework, we devise an {\em observation probability} based on $\vec{\alpha_t}$
+    \textbf{Transition Model.} We use the KL-loss (Equation~\ref{eq:klloss}) to measure the spectral fit of $\Lambda_t$ to $\vec{v_t}$, which we'll refer to as $d_t$.  As in Driedger et al. \cite{driedger2015let} (Equation~\ref{eq:driedgertimecontinuous}), however, we are willing to sacrifice fit to take longer grains from the corpus $W$.  To that end, we define the prior {\em state transition probability} in the as a Factorial Hidden Markov Model (FHMM) \cite{ghahramani1995factorial}, where components of each activation transition independently from each other:
+
+    \begin{equation}
+        \label{eq:transitionprob}
+        p_T(\vec{h_t} = \vec{b} | \vec{h_{t-1}} = \vec{a}) = \prod_{k=0}^{p-1} \left\{  \begin{array}{cc}  p_d & b[k] = a[k]+1  \\ \frac{1-p_d}{N-1} & \text{otherwise} \end{array} \right\}
+    \end{equation}
+    where $p_d \in [0, 1]$ is the ``probability of remaining time-continuous.''  Intuitively, if $p_d > 0.5$, then we are much more likely to continue to use a time-continuous activation than we are to jump to a new random activation, which promotes the agglomeration of longer contiguous sound grains from the corpus, even at the expense of a lower fit to the spectral template.  As such, $p_d$ a parameter that can be tuned by the artist and set closer to $1$ to promote longer grains.  We generally find $p_d \in [0.9, 0.99]$ to be effective.
+
+    We must also specify the {\em observation probability}, which pulls the states closer to matching $\vec{v_t}$, even if they have to jump away from time continuity; otherwise, the result would sound nothing like the target. We provide details in the next section in the context of our particle filter.
 
 
-\subsection{Sampling Algorithm}
+
+\subsection{Sampling  And Synthesizing}
 \label{sec:sampling}
 
-Discuss particle filter and synthesis details
+We now describe how to apply Bayesian inference to find the sequence of activations $s_t$ and their weights $h_t$ that maximize the posterior probability given the transition model in Equation~\ref{eq:transitionprob} and the observation model, which we detail below.  The authors of \cite{wohlmayr2010probabilistic}, who use Bayesian inference based on loopy belief propagation \ChrisEdit{(Check this)} on a similar FHMM applied to multi-pitch tracking.  However, we need a faster technique for real time applications with a tunable accuracy that degrades gracefully with restricted computational resources.  To that end, we turn to a particle filter.  
 
+Our particle filter consists of $P$ particles, each of which is a $p$-dimensional state vector (Equation~\ref{eq:statevector}) which we refer to as $\vec{s_i}$.  The particles move around the state space over time, and they each have asociated weights $w_i$ that keep track of the posterior probability of that accumulated motion over all timesteps (we dispense with the time index $t$ on $\vec{s_i}$ and $w_i$ since $t$ will be clear from context).  Since each particle is its own estimate of a state that best describes what templates to choose, our goal is to sample them in such a way that (at least some of) the particles are close to representing the state representing the maximum posterior probability given all $\vec{v_t}$.
+
+The particles all start out with even weights $w_i = 1/P$.  At the beginning of each time step, we sample new indices for each $\vec{s_i}$ according to Equation~\ref{eq:transitionprob}.  Then, we multiply each weight by the observation probability, which is based on the KL loss $d_i$ between $\Lambda_i$ and $\vec{v}_t$ (Equation~\ref{eq:approximation}) and that of the other particles as follows:
+
+\begin{equation}
+    \label{eq:observationprob}
+    p_O[i] = \frac{e^{-\tau d_i}}{ \sum_{j} e^{-\tau d_j}}
+\end{equation}
+
+In other words, it is a softmax with a ``temperature'' $\tau$, but using negative exponential since a larger $d_i$ loss indicates a poorer fit and hence, should indicate a lower probability.  Intuitively, a higher $\tau$ will emphasize more particles that better fit the observation, putting more importance on the observation relative than the transition probability.  This is tunable and has a similar effect to varying $p_d$ in the transition, as we will explore more in Section~\ref{sec:quantitativeevaluation}.
+
+After multiplying each $w_i$ by $p_O[i]$, we normalize the weights so that they sum to 1.  
+%If the sum of the weights is too numerically small based on the chosen floating point precision, we reset each weight to be $1/N$.
+
+\textbf{Resampling.} The above is a naive particle filter, but it suffers from ``sample impoverishment,'' where a few particles stand out with high weights and the rest are stuck with vanishing weights, leaving the system unable to adapt to new observations.  To ameliorate this, we compute a stanard definition of the ``effective number of particles $n_{\text{eff}}$'':
+
+\begin{equation}
+    n_{\text{eff}} \frac{1}{\sum_{i} w_i^2}
+\end{equation}
+
+
+which is maximized when all particles have equal weight $1/P$.  If $n_{\text{eff}}$ goes below $0.1P$ at a particular time step, we resample the particles with stochastic universal sampling (\ChrisEdit{citation}), an O(Pp) technique, and reset all of the weights to $1/N$ before continuing.  This leads to ``survival of the fittest'' where particles with a higher weight are more likely to be replicated and those with a lower weight are more likely to be eliminated.
+
+\textbf{Synthesizing audio.} At this point, we are ready to synthesize the audio for this timestep. \ChrisEdit{Explain windowing and overlap adding}
+
+
+
+
+
+\subsection{Increasing Efficiency}
+The dominant cost of both our algorithm and the algorithm of Driedger et. al. is the matrix multiplications in Equation~\ref{eq:sparseklhgrad}.
+
+Propagating particles and applying the observation model are also embarrasingly parallelizable at the particle level.
+
+We do much better, but there is still the potential to increase efficiency further in resource constrained scenarios
+
+
+
+Talk about mel spectrogram and proposal distribution
+
+Since the dominant cost of our algorithm is the matrix multiplications in Equation~\ref{eq:sparseklhgrad}
+
+\subsection{Regularizing Quiet Moments in Corpuses}
+
+Talk about regularization and proposal distribution
 
 \section{Mathematical Analysis}
 
@@ -202,12 +257,13 @@ We also note that once one of the particles catches on to a good activation, it 
 
 \subsection{Diagonal Enhancement}
 
-Talk about negative binomial, but how it's complicated because of the way probabilities are aggregated and time-continuous activations are promoted during aggregation.  Show example plot of diagonal distribution for different $p_d$
+Talk about negative binomial, but how it's complicated because of the way probabilities are aggregated and time-continuous activations are promoted during aggregation.  Show example plot of diagonal distribution for different $p_d$, and show a plot of Driedger as a comparison
 
 
 \section{Evaluation}
 
 \subsection{Quantitative Evaluation}
+\label{sec:quantitativeevaluation}
 The most important thing is that we give artists musical control.
 
 Show fit, distribution of diagonal lengths, distribution of activation changes, and repeated activation lengths for this algorithm compared to Driedger algorithm over the Tzanetakis dataset
