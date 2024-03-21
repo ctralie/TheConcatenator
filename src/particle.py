@@ -13,6 +13,8 @@ import time
 from threading import Lock
 from tkinter import Tk, ttk
 
+CORPUS_DB_CUTOFF = -50
+
 class ParticleFilter:
     def reset_state(self):
         self.neff = [] # Number of effective particles over time
@@ -28,6 +30,7 @@ class ParticleFilter:
         self.ws = torch.from_numpy(self.ws).to(self.device) # Particle weights
         self.all_ws = []
         self.fit = 0 # KL fit
+        self.num_resample = 0
 
     def __init__(self, ycorpus, feature_params, particle_params, device="cpu", use_mic=False):
         """
@@ -74,6 +77,8 @@ class ParticleFilter:
                 Repeated activations cutoff
             neff_thresh: float
                 Number of effective particles below which to resample
+            alpha: float
+                L2 penalty for weights
             use_top_particle: bool
                 If True, only take activations from the top particle at each step.
                 If False, aggregate 
@@ -96,6 +101,7 @@ class ParticleFilter:
         self.proposal_k = particle_params["proposal_k"]
         self.r = particle_params["r"]
         self.neff_thresh = particle_params["neff_thresh"]
+        self.alpha = particle_params["alpha"]
         self.use_top_particle = particle_params["use_top_particle"]
         self.device = device
         self.use_mic = use_mic
@@ -109,11 +115,23 @@ class ParticleFilter:
         self.feature_computer = AudioFeatureComputer(**feature_params)
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
-        self.WSound = [get_windowed(ycorpus[i, :], hop, win, hann_window) for i in range(n_channels)]
+        self.WSound = []
+        WPowers = [] # Store the maximum power over all channels
+        for i in range(n_channels):
+            WSi, WPi = get_windowed(ycorpus[i, :], hop, win, hann_window)
+            self.WSound.append(WSi)
+            if i == 0:
+                WPowers = WPi
+            else:
+                WPowers = np.maximum(WPowers, WPi)
         # Corpus is analyzed with hann window
         self.win_samples = np.array(hann_window(win), dtype=np.float32)
         WCorpus = torch.concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
         self.WCorpus = WCorpus
+        # Shrink elements that are too small
+        self.WAlpha = self.alpha*np.array(WPowers < CORPUS_DB_CUTOFF, dtype=np.float32)
+        self.WAlpha = torch.from_numpy(self.WAlpha).to(self.device)
+        self.loud_enough_idx_map = np.arange(WCorpus.shape[1])[WPowers > CORPUS_DB_CUTOFF]
 
         ## Step 2: Setup KDTree for proposal indices if requested
         self.proposal_tree = None
@@ -122,12 +140,13 @@ class ParticleFilter:
             WMag = np.sqrt(np.sum(WCorpusNumpy.T**2, axis=1))
             WMag[WMag == 0] = 1
             WNorm = WCorpusNumpy.T/WMag[:, None] # Vector normalized version for KDTree
-            self.proposal_tree = KDTree(WNorm, leaf_size=30, metric='euclidean')
+            print("Using {:.3f} proportion in proposal distribution".format(self.loud_enough_idx_map.size/WNorm.shape[0]))
+            self.proposal_tree = KDTree(WNorm[self.loud_enough_idx_map, :], leaf_size=30, metric='euclidean')
         
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
         self.N = N
-        self.observer = Observer(self.p, WCorpus, self.L, self.temperature)
+        self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature)
         self.propagator = Propagator(N, self.pd, device)
         self.reset_state()
 
@@ -257,6 +276,7 @@ class ParticleFilter:
         N = self.WCorpus.shape[1]
         T = len(self.H)
         vals = np.array([h.cpu().numpy() for h in self.H]).flatten()
+        print("Min h: {:.3f}, Max h: {:.3f}".format(np.min(vals), np.max(vals)))
         rows = np.array([c.cpu().numpy() for c in self.chosen_idxs], dtype=int).flatten()
         cols = np.array(np.ones((1, self.pfinal))*np.arange(T)[:, None], dtype=int).flatten()
         H = sparse.coo_matrix((vals, (rows, cols)), shape=(N, T))
@@ -369,6 +389,8 @@ class ParticleFilter:
         ndarray(n_samples, n_channels)
             Generated audio
         """
+        if len(ytarget.shape) == 1:
+            ytarget = ytarget[None, :] # Mono audio
         hop = self.win//2
         for i in range(0, ytarget.shape[1]//hop):
             self.audio_in(ytarget[:, i*hop:(i+1)*hop])
@@ -414,7 +436,6 @@ class ParticleFilter:
         """
         if len(self.H)%10 == 0:
             print(".", end="", flush=True)
-        p = self.states.shape[1]
         ## Step 1: Do STFT of this window and sample from proposal distribution
         Vs = [self.feature_computer(self.win_samples*x[i, :]) for i in range(x.shape[0])]
         Vt = torch.concatenate(tuple(Vs))
@@ -427,6 +448,7 @@ class ParticleFilter:
             VtNorm = np.sqrt(np.sum(Vtnp**2))
             if VtNorm > 0:
                 proposal_idxs = self.proposal_tree.query((Vtnp/VtNorm).T, self.proposal_k, return_distance=False).flatten()
+                proposal_idxs = self.loud_enough_idx_map[proposal_idxs]
                 proposal_idxs = np.array(proposal_idxs, dtype=np.int32)
                 proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
         if self.proposal_k == 0 or VtNorm == 0:
@@ -447,7 +469,7 @@ class ParticleFilter:
             top_idxs = self.aggregate_top_activations()
         self.chosen_idxs.append(top_idxs)
 
-        h = do_KL_torch(self.WCorpus[:, top_idxs], Vt[:, 0], self.L)
+        h = do_KL_torch(self.WCorpus[:, top_idxs], self.WAlpha[top_idxs], Vt[:, 0], self.L)
         self.H.append(h)
         
         ## Step 4: Resample particles if effective number is too low
@@ -456,6 +478,7 @@ class ParticleFilter:
         self.neff.append((1/torch.sum(self.ws**2)).item())
         if self.neff[-1] < self.neff_thresh:
             ## TODO: torch-ify stochastic universal sample
+            self.num_resample += 1
             choices, _ = stochastic_universal_sample(self.all_ws[-1], len(self.ws))
             choices = torch.from_numpy(np.array(choices, dtype=int)).to(self.device)
             self.states = self.states[choices, :]
@@ -515,7 +538,7 @@ class ParticleFilter:
         plt.subplot(235)
         plt.plot(self.neff)
         plt.xlabel("Timestep")
-        plt.title("Number of Effective Particles (P={}, Median {:.2f})".format(self.P, np.median(self.neff)))
+        plt.title("Neff (P={}, Median {:.2f}, Reampled {}x)".format(self.P, np.median(self.neff), self.num_resample))
 
         plt.subplot(236)
         diags = get_diag_lengths(H, p)

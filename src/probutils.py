@@ -242,7 +242,7 @@ def do_KL(Wi, Vt, L):
         hi *= ((Wi.T).dot(VLam)/Wd)
     return hi
 
-def do_KL_torch(Wi, Vt, L):
+def do_KL_torch(Wi, WAlpha, Vt, L):
     """
     Perform a KL-based NMF using pytorch
 
@@ -250,6 +250,8 @@ def do_KL_torch(Wi, Vt, L):
     ----------
     Wi: torch.tensor(M, p)
         Templates
+    WAlpha: torch.tensor(p)
+        L2 penalties for each activation
     Vt: torch.tensor(M)
         Observation
     L: int
@@ -268,5 +270,5 @@ def do_KL_torch(Wi, Vt, L):
         WH = torch.matmul(Wi, hi)
         WH[WH == 0] = 1
         VLam = Vt/WH
-        hi *= torch.matmul(WiT, VLam)/Wd
+        hi *= torch.matmul(WiT, VLam)/(Wd + WAlpha*hi)
     return hi

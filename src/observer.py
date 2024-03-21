@@ -3,7 +3,7 @@ import torch
 from threading import Lock
 
 class Observer:
-    def __init__(self, p, W, L, temperature):
+    def __init__(self, p, W, WAlpha, L, temperature):
         """
         Constructor for a class that computes observation probabilities
 
@@ -13,6 +13,8 @@ class Observer:
             Number of activations
         W: torch.tensor(M, N)
             Templates matrix, assumed to sum to 1 down the columns
+        WAlpha: torch.tensor(N)
+            L2 penalty to put on activations from each column of W
         L: int
             Number of iterations of KL
         temperature: float
@@ -22,6 +24,7 @@ class Observer:
         self.L = L
         self.temperature = temperature
         self.temperature_mutex = Lock()
+        self.WAlpha = WAlpha
         # Normalize ahead of time
         WDenom = torch.sum(W, dim=0, keepdims=True)
         WDenom[WDenom == 0] = 1
@@ -56,11 +59,12 @@ class Observer:
         Wi = torch.movedim(Wi, 1, 0)
         hi = torch.rand(P, p, 1).to(Wi)
         Vt = Vt.view(1, Vt.numel(), 1)
+        alpha = self.WAlpha[states].view(P, p, 1)
         for _ in range(self.L):
             WH = torch.matmul(Wi, hi)
             WH[WH == 0] = 1
             VLam = Vt/WH
-            hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)
+            hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)/(1+alpha*hi)
         ## Step 2: Compute KL divergences
         Vi = torch.matmul(Wi, hi)
         kls = torch.mean(Vt*torch.log(Vt/Vi) - Vt + Vi, dim=1)[:, 0]

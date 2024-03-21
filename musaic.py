@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--recorded', type=str, default="recorded.wav", help="Path to wav file to which to the audio that was recorded (only relevant if target is mic)")
     parser.add_argument('--winSize', type=int, default=2048, help="Window Size in samples")
     parser.add_argument('--sr', type=int, default=44100, help="Sample rate")
-    parser.add_argument('--minFreq', type=int, default=50, help="Minimum frequency to use (in hz), if using spectrogram bins directly")
+    parser.add_argument('--minFreq', type=int, default=0, help="Minimum frequency to use (in hz), if using spectrogram bins directly")
     parser.add_argument('--maxFreq', type=int, default=8000, help="Maximum frequency to use (in hz), if using spectrogram bins directly")
     parser.add_argument('--useSTFT', type=int, default=1, help="If 1, use ordinary STFT bins")
     parser.add_argument('--useMel', type=int, default=0, help="If 1, use mel-spaced bins")
@@ -36,6 +36,7 @@ if __name__ == '__main__':
     parser.add_argument('--pFinal', type=int, default=0, help="Number of simultaneous activations to use in output (by default use all of them)")
     parser.add_argument('--pd', type=float, default=0.95, help="Probability of sticking to an activation (0 is no stick, closer to 1 is longer continuous activations)")
     parser.add_argument('--L', type=int, default=10, help="Number of KL iterations")
+    parser.add_argument('--alpha', type=float, default=0.1, help="L2 penalty for activations")
     parser.add_argument('--particles', type=int, default=2000, help="Number of particles in the particle filter")
     parser.add_argument('--useTopParticle', type=int, default=0, help="If true, take activations only from the top particle.  Otherwise, aggregate them")
     parser.add_argument('--proposalK', type=int, default=0, help="Number of nearest neighbors to use in proposal distribution (if 0, don't use proposal distribution)")
@@ -77,6 +78,7 @@ if __name__ == '__main__':
         proposal_k=opt.proposalK,
         r=opt.r,
         neff_thresh=0.1*opt.particles,
+        alpha=opt.alpha,
         use_top_particle=opt.useTopParticle == 1
     )
     pf = ParticleFilter(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic")

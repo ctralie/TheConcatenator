@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 
+DB_MIN = -1000
+
 hann_window = lambda N: 0.5*(1 - np.cos(2*np.pi*np.arange(N)/N))
 
 def blackman_harris_window(N):
@@ -50,16 +52,23 @@ def get_windowed(x, hop, win, win_fn=hann_window, dc_normalize=True):
     -------
     ndarray(win, n_windows)
         Windowed audio
+    ndarray(n_windows)
+        Power of each window
     """
     nwin = int(np.ceil((x.size-win)/hop))+1
     S = np.zeros((win, nwin))
     for j in range(nwin):
         xj = x[hop*j:hop*j+win]
         S[0:xj.size, j] = xj
+    power = np.sum(S**2, axis=0)/win
+    ind = (power == 0)
+    power[ind == 1] = 1
+    power = 10*np.log10(power)
+    power[ind == 1] = DB_MIN
     S = S*win_fn(win)[:, None]
     if dc_normalize:
         S -= np.mean(S, axis=0, keepdims=True)
-    return S
+    return S, power
 
 def do_windowed_sum(WSound, H, win, hop):
     """
@@ -82,7 +91,7 @@ def do_windowed_sum(WSound, H, win, hop):
         y[j*hop:j*hop+win] += yh[:, j]
     return y
 
-def load_corpus(path, sr, stereo):
+def load_corpus(path, sr, stereo, amp_normalize=True):
     """
     Load a corpus of audio
 
@@ -94,6 +103,8 @@ def load_corpus(path, sr, stereo):
         Sample rate to use
     stereo: bool
         If true, load stereo.  If false, load mono
+    amp_normalize: bool
+        If True (default), normalize the audio sample range to be in [-1, 1]
     
     Returns
     -------
@@ -114,6 +125,10 @@ def load_corpus(path, sr, stereo):
     for f in files:
         try:
             x, sr = librosa.load(f, sr=sr, mono=not stereo)
+            if amp_normalize:
+                norm = np.max(np.abs(x))
+                if norm > 0:
+                    x = x/norm
             if stereo and len(x.shape) == 1:
                 x = np.array([x, x])
             samples.append(x)
