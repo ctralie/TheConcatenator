@@ -16,6 +16,7 @@
 \usepackage{ismir,amsmath,cite,url}
 \usepackage{graphicx}
 \usepackage{color}
+\usepackage{amsfonts}
 
 
 \usepackage{lineno}
@@ -148,7 +149,7 @@ Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\e
     
     Henceforth, we will refer to the observations, or columns of $V$ at time $t$ as vectors $\vec{v}_t$ to emphasize that the data is streaming, and we focus on one timestep $t$ at a time.  
     
-    \textbf{State space.} To keep our state space simple, we decouple which activations are active from their weights; we model the former only as our hidden state, while we infer the weights as a best fit under the KL-loss (Equation~\ref{eq:klloss}).  To control for polyphany directly, we use a {\em $p$-sparse} integer-valued vector $\vec{s}_t \in Z^p$ as our hidden state.  This vector indexes the $p$ templates that are active at time $t$, where $p$ is fixed ahead of time.  For convenience of implementation, we allow repetitions of template indices, and the indices are in no particular order\footnote{One could also model $\vec{s}_t$ as an unordered set without repetition, which would identify all $\vec{s}_t$'s that are permutations of each other.  This would reduce the cardinality of the state space to $\binom{N}{k}$ at the cost of a more cumbersome implementation.  We also rely on some redundancy of good state samples in our particle filter, so the redundancy of our simpler scheme does not hurt us.};
+    \textbf{State space.} To keep our state space simple, we decouple which activations are active from their weights; we model the former only as our hidden state, while we infer the weights as a best fit under the KL-loss (Equation~\ref{eq:klloss}).  To control for polyphany directly, we use a {\em $p$-sparse} integer-valued vector $\vec{s}_t \in \mathbb{Z}^p$ as our hidden state.  This vector indexes the $p$ templates that are active at time $t$, where $p$ is fixed ahead of time.  For convenience of implementation, we allow repetitions of template indices, and the indices are in no particular order\footnote{One could also model $\vec{s}_t$ as an unordered set without repetition, which would identify all $\vec{s}_t$'s that are permutations of each other.  This would reduce the cardinality of the state space to $\binom{N}{k}$ at the cost of a more cumbersome implementation.  We also rely on some redundancy of good state samples in our particle filter, so the redundancy of our simpler scheme does not hurt us.};
 
     \begin{equation} 
         \label{eq:statevector}

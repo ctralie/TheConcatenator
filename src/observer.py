@@ -24,11 +24,12 @@ class Observer:
         self.L = L
         self.temperature = temperature
         self.temperature_mutex = Lock()
+        self.W = W
         self.WAlpha = WAlpha
         # Normalize ahead of time
-        WDenom = torch.sum(W, dim=0, keepdims=True)
+        WDenom = torch.sum(W, dim=0)
         WDenom[WDenom == 0] = 1
-        self.W = W/WDenom 
+        self.WDenom = WDenom 
     
     def update_temperature(self, temperature):
         with self.temperature_mutex:
@@ -57,6 +58,7 @@ class Observer:
         p = states.shape[1]
         Wi = self.W[:, states]
         Wi = torch.movedim(Wi, 1, 0)
+        Wd = self.WDenom[states].view(P, p, 1)
         hi = torch.rand(P, p, 1).to(Wi)
         Vt = Vt.view(1, Vt.numel(), 1)
         alpha = self.WAlpha[states].view(P, p, 1)
@@ -64,7 +66,7 @@ class Observer:
             WH = torch.matmul(Wi, hi)
             WH[WH == 0] = 1
             VLam = Vt/WH
-            hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)/(1+alpha*hi)
+            hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)/(Wd + alpha*hi)
         ## Step 2: Compute KL divergences
         Vi = torch.matmul(Wi, hi)
         kls = torch.mean(Vt*torch.log(Vt/Vi) - Vt + Vi, dim=1)[:, 0]

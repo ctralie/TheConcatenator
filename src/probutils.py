@@ -234,7 +234,6 @@ def do_KL(Wi, Vt, L):
     #hi = np.ones(Wi.shape[1])
     Wd = np.sum(Wi, axis=0)
     Wd[Wd == 0] = 1
-    losses = []
     for _ in range(L):
         WH = Wi.dot(hi)
         WH[WH == 0] = 1
