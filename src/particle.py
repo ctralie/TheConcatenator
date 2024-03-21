@@ -129,7 +129,7 @@ class ParticleFilter:
         WCorpus = torch.concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
         self.WCorpus = WCorpus
         # Shrink elements that are too small
-        self.WAlpha = self.alpha*np.array(WPowers < CORPUS_DB_CUTOFF, dtype=np.float32)
+        self.WAlpha = self.alpha*np.array(WPowers <= CORPUS_DB_CUTOFF, dtype=np.float32)
         self.WAlpha = torch.from_numpy(self.WAlpha).to(self.device)
         self.loud_enough_idx_map = np.arange(WCorpus.shape[1])[WPowers > CORPUS_DB_CUTOFF]
 
