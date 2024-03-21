@@ -115,4 +115,8 @@ class Propagator:
         states[new_loc==1] = other[idxs]
 
         ## Correction factor
-        return torch.prod(p, dim=1)/torch.prod(q, dim=1)
+        num = torch.prod(p, dim=1)
+        denom = torch.prod(q, dim=1)
+        num[denom == 0] = 1
+        denom[denom == 0] = 1
+        return num/denom

@@ -132,6 +132,7 @@ class ParticleFilter:
         self.WAlpha = self.alpha*np.array(WPowers <= CORPUS_DB_CUTOFF, dtype=np.float32)
         self.WAlpha = torch.from_numpy(self.WAlpha).to(self.device)
         self.loud_enough_idx_map = np.arange(WCorpus.shape[1])[WPowers > CORPUS_DB_CUTOFF]
+        print("{:.3f}% of corpus is above loudness threshold".format(100*self.loud_enough_idx_map.size/WCorpus.shape[1]))
 
         ## Step 2: Setup KDTree for proposal indices if requested
         self.proposal_tree = None
@@ -140,7 +141,6 @@ class ParticleFilter:
             WMag = np.sqrt(np.sum(WCorpusNumpy.T**2, axis=1))
             WMag[WMag == 0] = 1
             WNorm = WCorpusNumpy.T/WMag[:, None] # Vector normalized version for KDTree
-            print("Using {:.3f} proportion in proposal distribution".format(self.loud_enough_idx_map.size/WNorm.shape[0]))
             self.proposal_tree = KDTree(WNorm[self.loud_enough_idx_map, :], leaf_size=30, metric='euclidean')
         
         ## Step 3: Setup observer and propagator
@@ -455,7 +455,7 @@ class ParticleFilter:
             self.propagator.propagate(self.states)
         else:
             # Correction factor for proposal distribution
-            self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs) 
+            self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs)
 
         ## Step 2: Apply the observation probability updates
         self.ws *= self.observer.observe(self.states, Vt)
