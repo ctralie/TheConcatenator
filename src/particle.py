@@ -501,6 +501,11 @@ class ParticleFilter:
         ## Step 6: Accumulate KL term for fit
         WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
+        # Take care of numerical issues
+        Vt = Vt[WH > 0]
+        WH = WH[WH > 0]
+        WH = WH[Vt > 0]
+        Vt = Vt[Vt > 0]
         kl = (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
         self.fit += kl
 
