@@ -69,7 +69,10 @@ class Observer:
             hi *= torch.matmul(torch.movedim(Wi, 1, 2), VLam)/(Wd + alpha*hi)
         ## Step 2: Compute KL divergences
         Vi = torch.matmul(Wi, hi)
-        kls = torch.mean(Vt*torch.log(Vt/Vi) - Vt + Vi, dim=1)[:, 0]
+        Vi[Vi == 0] = 1
+        logarg = Vt/Vi
+        logarg[logarg == 0] = 1
+        kls = torch.mean(Vt*torch.log(logarg) - Vt + Vi, dim=1)[:, 0]
         ## Step 3: Compute observation probabilities
         with self.temperature_mutex:
             obs_prob = torch.exp(-self.temperature*kls)

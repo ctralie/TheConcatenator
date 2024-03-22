@@ -410,7 +410,7 @@ class ParticleFilter:
         """
         from scipy import sparse
         ## Step 1: Aggregate max particles
-        PTop = int(0.1*self.P)
+        PTop = int(self.neff_thresh)
         N = self.WCorpus.shape[1]
         ws = self.ws.cpu().numpy()
         idxs = np.argpartition(-ws, PTop)[0:PTop]
