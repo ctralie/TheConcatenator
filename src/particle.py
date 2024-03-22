@@ -31,6 +31,11 @@ class ParticleFilter:
         self.all_ws = []
         self.fit = 0 # KL fit
         self.num_resample = 0
+        
+        # Setup a circular buffer that receives in hop samples at a time
+        self.buf_in  = np.zeros((self.n_channels, self.win), dtype=np.float32)
+        # Setup an output buffer that doubles in size like an arraylist
+        self.buf_out = np.zeros((self.n_channels, self.sr*60*10), dtype=np.float32)
 
     def __init__(self, ycorpus, feature_params, particle_params, device="cpu", use_mic=False):
         """
@@ -149,12 +154,6 @@ class ParticleFilter:
         self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature)
         self.propagator = Propagator(N, self.pd, device)
         self.reset_state()
-
-        ## Step 4: Setup audio buffers
-        # Setup a circular buffer that receives in hop samples at a time
-        self.buf_in  = np.zeros((n_channels, win), dtype=np.float32)
-        # Setup an output buffer that doubles in size like an arraylist
-        self.buf_out = np.zeros((n_channels, sr*60*10), dtype=np.float32)
 
         print("Finished setting up particle filter: Elapsed Time {:.3f} seconds".format(time.time()-tic))
 
@@ -277,7 +276,7 @@ class ParticleFilter:
         T = len(self.H)
         vals = np.array([h.cpu().numpy() for h in self.H]).flatten()
         print("Min h: {:.3f}, Max h: {:.3f}".format(np.min(vals), np.max(vals)))
-        rows = np.array([c.cpu().numpy() for c in self.chosen_idxs], dtype=int).flatten()
+        rows = np.array(self.chosen_idxs, dtype=int).flatten()
         cols = np.array(np.ones((1, self.pfinal))*np.arange(T)[:, None], dtype=int).flatten()
         H = sparse.coo_matrix((vals, (rows, cols)), shape=(N, T))
         return H.toarray()
@@ -396,7 +395,7 @@ class ParticleFilter:
             self.audio_in(ytarget[:, i*hop:(i+1)*hop])
         return self.get_generated_audio()
     
-    def aggregate_top_activations(self, diag_fac=10, diag_len=5):
+    def aggregate_top_activations(self, diag_fac=10, diag_len=10):
         """
         Aggregate activations from the top weight 0.1*self.P particles together
         to have them vote on the best activations
@@ -409,23 +408,32 @@ class ParticleFilter:
         diag_len: int
             Number of steps to look back for diagonal promotion
         """
+        from scipy import sparse
+        ## Step 1: Aggregate max particles
+        PTop = int(0.1*self.P)
         N = self.WCorpus.shape[1]
-        probs = torch.zeros(N).to(self.ws)
-        max_particles = torch.topk(self.ws, int(0.1*self.P), largest=True)[1]
-        for state, w in zip(self.states[max_particles], self.ws[max_particles]):
-            probs[state] += w
-        # Promote states that follow the last state that was chosen
-        promoted_idxs = torch.zeros(N).to(self.ws)
+        ws = self.ws.cpu().numpy()
+        idxs = np.argpartition(-ws, PTop)[0:PTop]
+        states = self.states[idxs, :].cpu().numpy()
+        ws = ws[idxs, None]*np.ones((1, states.shape[1]))
+        states = states.flatten()
+        ws = ws.flatten()
+        probs = sparse.coo_matrix((ws, (states, np.zeros(states.size))), 
+                                  shape=(N, 1)).toarray().flatten()
+        
+        ## Step 2: Promote states that follow the last state that was chosen
+        promoted_idxs = np.zeros(N, dtype=int)
         for dc in range(1, min(diag_len, len(self.chosen_idxs))+1):
             last_state = self.chosen_idxs[-dc]+dc
             last_state = last_state[last_state < N]
             promoted_idxs[last_state] = 1
         probs[promoted_idxs > 0] *= diag_fac
-        # Zero out last ones to prevent repeated activations
+
+        ## Step 3: Zero out last ones to prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
             probs[self.chosen_idxs[-dc]] = 0
-        return torch.topk(probs, self.pfinal, largest=True)[1]
-
+        return np.argpartition(-probs, self.pfinal)[0:self.pfinal]
+    
     def process_window(self, x):
         """
         Run the particle filter for one step given the audio
@@ -487,7 +495,7 @@ class ParticleFilter:
         ## Step 5: Create and output audio samples for this window
         y = np.zeros_like(x)
         for i in range(x.shape[0]):
-            y[i, :] = self.WSound[i][:, top_idxs.cpu().numpy()].dot(h.cpu().numpy())
+            y[i, :] = self.WSound[i][:, top_idxs].dot(h.cpu().numpy())
         self.audio_out(y)
 
         ## Step 6: Accumulate KL term for fit

@@ -7,15 +7,17 @@ Introductory points:
 
 * Summarize the entirety of the algorithm
 
-* Be precise about the complexity of Driedger and the complexity of this algorithm
 
-* Block diagram for Bayesian model
+* Block diagram for sampling algorithm
 
 * Figure comparing activation patters to Driedger, talk about Gaussian vs exponential qualitative characteristics of activations
 - Note that for Driedger, p=1 can actually lead to multiple activations
 
+* Be sure to mention that we do stereo at 44100hz
+* Note that we use a smaller L than driedger
 
 Finished
 --------
 * Cite patch match and explain the connection to
 * Summarize Driedger technique
+* Be precise about the complexity of Driedger and the complexity of this algorithm

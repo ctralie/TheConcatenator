@@ -4,10 +4,7 @@ Purpose: To implementing the NMF techniques in [1]
 "Let it Bee-Towards NMF-Inspired Audio Mosaicing." ISMIR. 2015.
 """
 import numpy as np
-import scipy.io as sio
 import scipy.ndimage
-import matplotlib.pyplot as plt
-import time
 
 
 def diagonally_enhance_H(H, c):
@@ -70,7 +67,7 @@ def get_musaic_activations(V, W, L, r=3, p=10, c=3, verbose=False):
     H = np.random.rand(K, N)
     for l in range(L):
         if verbose:
-            print(l, end='.') # Print out iteration number for progress
+            print(".", end="", flush=True) # Print out iteration number for progress
         iterfac = 1-float(l+1)/L       
 
         #Step 1: Avoid repeated activations
@@ -92,6 +89,43 @@ def get_musaic_activations(V, W, L, r=3, p=10, c=3, verbose=False):
     
     return H
 
+
+def get_basic_KL_activations(V, W, L, verbose=False):
+    """
+    Do basic KL-based NMF
+
+    Parameters
+    ----------
+    V: ndarray(M, N)
+        A M x N nonnegative target matrix
+    W: ndarray(M, K)
+        STFT magnitudes corresponding to WSound
+    L: int
+        Number of iterations
+    verbose: bool
+        Whether to print progress info
+    
+    Returns
+    -------
+    H: ndarray(K, N)
+        Activations matrix
+    """
+    N = V.shape[1]
+    K = W.shape[1]
+    WDenom = np.sum(W, 0)
+    WDenom[WDenom == 0] = 1
+
+    VAbs = np.abs(V)
+    H = np.random.rand(K, N)
+    for l in range(L):
+        if verbose:
+            print(".", end="", flush=True) # Print out iteration number for progress
+        #KL Divergence Version
+        WH = W.dot(H)
+        WH[WH == 0] = 1
+        VLam = VAbs/WH
+        H = H*((W.T).dot(VLam)/WDenom[:, None])
+    return H
 
 
 def create_musaic_sliding(V, WSound, W, win, hop, slidewin, L, r=3, p=10, c=3):

@@ -171,7 +171,7 @@ Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\e
     \end{equation}
     
 
-    \textbf{Transition Model.} We use the KL-loss (Equation~\ref{eq:klloss}) to measure the spectral fit of $\Lambda_t$ to $\vec{v_t}$, which we'll refer to as $d_t$.  As in Driedger et al. \cite{driedger2015let} (Equation~\ref{eq:driedgertimecontinuous}), however, we are willing to sacrifice fit to take longer grains from the corpus $W$.  To that end, we define the prior {\em state transition probability} in the as a Factorial Hidden Markov Model (FHMM) \cite{ghahramani1995factorial}, where components of each activation transition independently from each other:
+    \textbf{Transition Model.} We use the KL-loss (Equation~\ref{eq:klloss}) to measure the spectral fit of $\Lambda_t$ to $\vec{v_t}$, which we'll refer to as $d_t$.  As in Driedger et al. \cite{driedger2015let} (Equation~\ref{eq:driedgertimecontinuous}), however, we are willing to sacrifice fit to take longer grains from the corpus $W$.  To that end, we define the prior  \textbf{state transition probability} in the as a Factorial Hidden Markov Model (FHMM) \cite{ghahramani1995factorial}, where components of each activation transition independently from each other:
 
     \begin{equation}
         \label{eq:transitionprob}
@@ -188,16 +188,16 @@ Caterpillar and audio analogies are both {\em Bayesian in nature}, where the {\e
 
 We now describe how to apply Bayesian inference to find the sequence of activations $s_t$ and their weights $h_t$ that maximize the posterior probability given the transition model in Equation~\ref{eq:transitionprob} and the observation model, which we detail below.  The authors of \cite{wohlmayr2010probabilistic}, who use Bayesian inference based on loopy belief propagation \ChrisEdit{(Check this)} on a similar FHMM applied to multi-pitch tracking.  However, we need a faster technique for real time applications with a tunable accuracy that degrades gracefully with restricted computational resources.  To that end, we turn to a particle filter.  
 
-Our particle filter consists of $P$ particles, each of which is a $p$-dimensional state vector (Equation~\ref{eq:statevector}) which we refer to as $\vec{s_i}$.  The particles move around the state space over time, and they each have asociated weights $w_i$ that keep track of the posterior probability of that accumulated motion over all timesteps (we dispense with the time index $t$ on $\vec{s_i}$ and $w_i$ since $t$ will be clear from context).  Since each particle is its own estimate of a state that best describes what templates to choose, our goal is to sample them in such a way that (at least some of) the particles are close to representing the state representing the maximum posterior probability given all $\vec{v_t}$.
+Our particle filter consists of $P$ particles, each of which is a $p$-dimensional state vector (Equation~\ref{eq:statevector}) which we refer to as $\vec{s_i}$.  The particles move around the state space over time, and they each have associated weights $w_i$ that keep track of the posterior probability of that accumulated motion over all timesteps (we dispense with the time index $t$ on $\vec{s_i}$ and $w_i$ since $t$ will be clear from context).  Since each particle is its own estimate of a state that best describes what templates to choose, our goal is to sample them in such a way that (at least some of) the particles are close to representing the state representing the maximum posterior probability given all $\vec{v_t}$.
 
-The particles all start out with even weights $w_i = 1/P$.  At the beginning of each time step, we sample new indices for each $\vec{s_i}$ according to Equation~\ref{eq:transitionprob}.  Then, we multiply each weight by the observation probability, which is based on the KL loss $d_i$ between $\Lambda_i$ and $\vec{v}_t$ (Equation~\ref{eq:approximation}) and that of the other particles as follows:
+\textbf{Tracking Weights.} The particles all start out with even weights $w_i = 1/P$.  At the beginning of each time step, we sample new indices for each $\vec{s_i}$ according to Equation~\ref{eq:transitionprob}.  Then, we multiply each weight by the \textbf{observation probability}, which is based on the KL loss $d_i$ between $\Lambda_i$ and $\vec{v}_t$ (Equation~\ref{eq:approximation}) after $L$ iterations of Equation~\ref{eq:sparseklhgrad}, and that of the other particles, as follows:
 
 \begin{equation}
     \label{eq:observationprob}
     p_O[i] = \frac{e^{-\tau d_i}}{ \sum_{j} e^{-\tau d_j}}
 \end{equation}
 
-In other words, it is a softmax with a ``temperature'' $\tau$, but using negative exponential since a larger $d_i$ loss indicates a poorer fit and hence, should indicate a lower probability.  Intuitively, a higher $\tau$ will emphasize more particles that better fit the observation, putting more importance on the observation relative than the transition probability.  This is tunable and has a similar effect to varying $p_d$ in the transition, as we will explore more in Section~\ref{sec:quantitativeevaluation}.
+In other words, it is a softmax based on goodness of fit to $\vec{v_t}$ with a ``temperature'' $\tau$, but using negative exponential since a larger $d_i$ loss indicates a poorer fit and hence, should indicate a lower probability.  Intuitively, a higher $\tau$ will emphasize more particles that better fit the observation, putting more importance on the observation relative than the transition probability.  This is tunable and has a similar effect to varying $p_d$ in the transition, as we will explore more in Section~\ref{sec:quantitativeevaluation}.
 
 After multiplying each $w_i$ by $p_O[i]$, we normalize the weights so that they sum to 1.  
 %If the sum of the weights is too numerically small based on the chosen floating point precision, we reset each weight to be $1/N$.
@@ -205,7 +205,7 @@ After multiplying each $w_i$ by $p_O[i]$, we normalize the weights so that they 
 \textbf{Resampling.} The above is a naive particle filter, but it suffers from ``sample impoverishment,'' where a few particles stand out with high weights and the rest are stuck with vanishing weights, leaving the system unable to adapt to new observations.  To ameliorate this, we compute a stanard definition of the ``effective number of particles $n_{\text{eff}}$'':
 
 \begin{equation}
-    n_{\text{eff}} \frac{1}{\sum_{i} w_i^2}
+    n_{\text{eff}} = \frac{1}{\sum_{i} w_i^2}
 \end{equation}
 
 
@@ -213,30 +213,36 @@ which is maximized when all particles have equal weight $1/P$.  If $n_{\text{eff
 
 \textbf{Synthesizing audio.} At this point, we are ready to synthesize the audio for this timestep. \ChrisEdit{Explain windowing and overlap adding}
 
+% W is M x N, H is N x T,  we need MxT dot products, each costing N
+
+% WH: (MxNxT), other coefficients: (NxNxT)
+
+\textbf{Computational Complexity.} The dominant cost of both our algorithm and the algorithm of Driedger et. al. are the activation updates via KL iterations.  Given $N$ corpus templates, $T$ times, and a spectral dimension of $M$, for $L$ KL iterations, the time complexity of Driedger (Equation~\ref{eq:klhgrad}) is $O(L(N^2T + MNT))$.  On the other hand, given $P$ particles in our algorithm and $p$ activations per particle, the time complexity of our analagous Equation~\ref{eq:sparseklhgrad} is only $O(LP(p^2T + MpT))$, which does not scale with the corpus size $N$ (though $P$ may need to scale with $N$ for good results, as argued in Section~\ref{sec:activationprob}).  As an example, for 5 minute corpus a window length of 2048 ($M=1024$, hop=$1024$) at a sample rate of 44100, using $P=1000$ and $p=10$, this is a speedup of nearly 20x.  We note also that propagating particles and applying the observation model are also embarrassingly parallelizable at the particle level, and regardless, our algorithm can stream the results real time.
+
+
+\subsection{Bells And Whistles (Pun Intended)}
+
+Though the main algorithm stands on its own, we have implemented several improvements.
 
 
 
-
-\subsection{Increasing Efficiency}
-The dominant cost of both our algorithm and the algorithm of Driedger et. al. is the matrix multiplications in Equation~\ref{eq:sparseklhgrad}.
-
-Propagating particles and applying the observation model are also embarrasingly parallelizable at the particle level.
-
-We do much better, but there is still the potential to increase efficiency further in resource constrained scenarios
+\textbf{Mel Spectrograms.} The computational complexity scales linearly with $P$, so lowering $P$ makes the system run faster, but it is also possible to decrease $M$ without sacrificing much quality.  One can replace the full spectrogram wiht a mel-spaced spectrogram with many fewer bins.  In fact, Schwarz's Caterpillar system did something very similar suggesting \cite{schwarz2000system}, and we see results quite similar to the full on STFT (Section~\ref{sec:quantitativeevaluation}).
 
 
+\textbf{Proposal Distribution.} We use a proposal distribution
 
-Talk about mel spectrogram and proposal distribution
+Note that \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} did something similar
 
-Since the dominant cost of our algorithm is the matrix multiplications in Equation~\ref{eq:sparseklhgrad}
-
-\subsection{Regularizing Quiet Moments in Corpuses}
+\textbf{Regularizing Quiet Moments in The Corpus.}
 
 Talk about regularization and proposal distribution
+
+
 
 \section{Mathematical Analysis}
 
 \subsection{Picking Good Activations}
+\label{sec:activationprob}
 
 In practice, a limited number of particles are surprisingly effective at picking up on activations that fit the target well, which we explain with a simple probabilistic argument.  Given a corpus with $N$ sound grains (including pitch shifts) and $P$ particles that each capture $p$ activations, suppose that we have a hypothetical ``ideal particle'' $\hat{h}$ with the $p$ best activations that work together to match a target.  Since activations adapt to the target when they are randomly resampled with probability $p_d$, the probability of jumping to at least one of the top $k$ activations of $\hat{h}$ at a particular timestep is 
 
