@@ -51,6 +51,7 @@ ycorpus = load_corpus("../corpus/EdenVIP2", sr, True)
 N = 1000
 files = glob.glob("../target/fma_small/*/*.mp3")
 np.random.seed(len(files))
+files = sorted(files)
 files = [files[idx] for idx in np.random.permutation(len(files))[0:N]]
 files = sorted(files)
 

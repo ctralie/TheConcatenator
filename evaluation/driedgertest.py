@@ -43,6 +43,7 @@ n_batches = int(sys.argv[1])
 batch_num = int(sys.argv[2])
 files = glob.glob("../target/fma_small/*/*.mp3")
 np.random.seed(len(files))
+files = sorted(files)
 files = [files[idx] for idx in np.random.permutation(len(files))[0:N]]
 files = sorted(files)
 outfilenames = [f[0:-4] + "_driedger_" + corpusname + ".pkl" for f in files]
