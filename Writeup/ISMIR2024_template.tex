@@ -244,7 +244,7 @@ Talk about regularization and proposal distribution
 \subsection{Picking Good Activations}
 \label{sec:activationprob}
 
-In practice, a limited number of particles are surprisingly effective at picking up on activations that fit the target well, which we explain with a simple probabilistic argument.  Given a corpus with $N$ sound grains (including pitch shifts) and $P$ particles that each capture $p$ activations, suppose that we have a hypothetical ``ideal particle'' $\hat{h}$ with the $p$ best activations that work together to match a target.  Since activations adapt to the target when they are randomly resampled with probability $p_d$, the probability of jumping to at least one of the top $k$ activations of $\hat{h}$ at a particular timestep is 
+In practice, seemingly few particles are surprisingly effective at picking up on activations that fit the target well, which we explain with a simple probabilistic argument.  Given a corpus with $N$ sound grains (including pitch shifts) and $P$ particles that each capture $p$ activations, suppose that we have a hypothetical ``ideal particle'' $\hat{h}$ with the $p$ best activations that work together to match a target.  Since activations adapt to the target when they are randomly resampled with probability $p_d$, the probability of jumping to at least one of the top $k$ activations of $\hat{h}$ at a particular timestep is 
 
 \begin{equation}
     \label{eq:timeadjacentprob}
