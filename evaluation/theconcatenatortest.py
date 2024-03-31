@@ -72,6 +72,7 @@ def do_batch_with_params(pfiles, feature_params, particle_params):
     pf = ParticleFilter(ycorpus, feature_params, particle_params, 'cuda')
 
     for target, outfilename in zip(files, outfilenames):
+        print(outfilename)
         pf.reset_state()
         ytarget = load_corpus(target, sr=sr, stereo=stereo)
         
@@ -91,7 +92,7 @@ def do_batch_with_params(pfiles, feature_params, particle_params):
 
         pickle.dump(res, open(outfilename, "wb"))
 
-for pd in [0.9, 0.99, 0.5]:
+for pd in [0.9, 0.95, 0.99, 0.5]:
     particle_params["pd"] = pd
     for p in [5, 10]:
         particle_params["p"] = p
@@ -103,4 +104,6 @@ for pd in [0.9, 0.99, 0.5]:
                 particle_params["neff_thresh"] = 0.1*P
                 for proposal_k in [0, 10]:
                     particle_params["proposal_k"] = proposal_k
-                    do_batch_with_params(files, feature_params, particle_params)
+                    if P != 10000 or (p == 5 and temperature == 10 and pd == 0.9 and proposal_k == 0):
+                        # Since 10000 is so expensive, only look at it with p=5, temperature=10, pd=0.9, and no proposal k
+                        do_batch_with_params(files, feature_params, particle_params)
