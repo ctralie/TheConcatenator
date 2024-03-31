@@ -102,7 +102,10 @@ for pd in [0.9, 0.95, 0.99, 0.5]:
             for P in [100, 1000, 10000]:
                 particle_params["P"] = P
                 particle_params["neff_thresh"] = 0.1*P
-                for proposal_k in [0, 10]:
+                proposal_ks = [0]
+                if P == 100:
+                    proposal_ks.append(10) # Only use proposal distribution for 100 particles
+                for proposal_k in proposal_ks:
                     particle_params["proposal_k"] = proposal_k
                     if P != 10000 or (p == 5 and temperature == 10 and pd == 0.9 and proposal_k == 0):
                         # Since 10000 is so expensive, only look at it with p=5, temperature=10, pd=0.9, and no proposal k
