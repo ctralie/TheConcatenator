@@ -9,7 +9,6 @@ sys.path.append("src")
 from audioutils import load_corpus
 from particle import ParticleFilter
 import time
-import torch
 from scipy.io import wavfile
 
 
@@ -28,7 +27,7 @@ if __name__ == '__main__':
     parser.add_argument('--useZCS', type=int, default=0, help="If 1, use zero-crossings in each window as a feature")
     parser.add_argument('--melBands', type=int, default=40, help="Number of mel bands to use")
     parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
-    parser.add_argument('--device', type=str, default="cpu", help="Torch device to use")
+    parser.add_argument('--device', type=str, default="cpu", help="Torch device to use, or \"np\" for numpy")
     parser.add_argument("--nThreads", type=int, default=0, help="Use this number of threads in torch if specified")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
     parser.add_argument('--r', type=int, default=7, help="Width of the repeated activation filter")
@@ -46,6 +45,7 @@ if __name__ == '__main__':
 
     if opt.nThreads > 0:
         print("Using {} threads".format(opt.nThreads))
+        import torch
         torch.set_num_threads(opt.nThreads)
 
     pfinal = opt.p

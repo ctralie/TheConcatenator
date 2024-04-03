@@ -1,9 +1,8 @@
 import numpy as np
-import torch
 from threading import Lock
 
 class Observer:
-    def __init__(self, p, W, WAlpha, L, temperature):
+    def __init__(self, p, W, WAlpha, L, temperature, device):
         """
         Constructor for a class that computes observation probabilities
 
@@ -26,8 +25,13 @@ class Observer:
         self.temperature_mutex = Lock()
         self.W = W
         self.WAlpha = WAlpha
+        self.device = device
         # Normalize ahead of time
-        WDenom = torch.sum(W, dim=0)
+        if device == "np":
+            WDenom = np.sum(W, axis=0)
+        else:
+            import torch
+            WDenom = torch.sum(W, dim=0)
         WDenom[WDenom == 0] = 1
         self.WDenom = WDenom 
     
@@ -35,7 +39,54 @@ class Observer:
         with self.temperature_mutex:
             self.temperature = temperature
 
-    def observe(self, states, Vt):
+    def observe_np(self, states, Vt):
+        """
+        Compute the observation probabilities for a set of states
+        at a particular time.
+
+        Parameters
+        ----------
+        states: ndarray(P, p)
+            Column choices in W corresponding to each particle
+        Vt: ndarray(M, 1)
+            Observation for this time
+        
+        Returns
+        -------
+        ndarray(P)
+            Observation probabilities
+        """
+        ## Step 1: Run NMF
+        P = states.shape[0]
+        p = states.shape[1]
+        Wi = self.W[:, states]
+        Wi = np.moveaxis(Wi, 1, 0)
+        Wd = self.WDenom[states].reshape((P, p))
+        hi = np.random.rand(P, p, 1)
+        Vt = np.reshape(Vt, (1, Vt.size))
+        alpha = self.WAlpha[states].reshape((P, p))
+        for _ in range(self.L):
+            WH = np.einsum('ijk,ik->ij', Wi, hi)
+            WH[WH == 0] = 1
+            VLam = Vt/WH
+            hi *= np.einsum('ijk,ij->ik', Wi, VLam)/(Wd + alpha*hi)
+        ## Step 2: Compute KL divergences
+        Vi = np.einsum('ijk,ik->ij', Wi, hi)
+        Vi[Vi == 0] = 1
+        logarg = Vt/Vi
+        logarg[logarg == 0] = 1
+        kls = np.mean(Vt*np.log(logarg) - Vt + Vi, dim=1)
+        ## Step 3: Compute observation probabilities
+        with self.temperature_mutex:
+            obs_prob = np.exp(-self.temperature*kls)
+        denom = np.sum(obs_prob)
+        if denom < 1e-40:
+            obs_prob[:] = 1/obs_prob.size
+        else:
+            obs_prob /= denom
+        return obs_prob
+
+    def observe_torch(self, states, Vt):
         """
         Compute the observation probabilities for a set of states
         at a particular time.
@@ -53,6 +104,7 @@ class Observer:
         torch.tensor(P)
             Observation probabilities
         """
+        import torch
         ## Step 1: Run NMF
         P = states.shape[0]
         p = states.shape[1]
@@ -82,3 +134,26 @@ class Observer:
         else:
             obs_prob /= denom
         return obs_prob
+
+    def observe(self, states, Vt):
+        """
+        Compute the observation probabilities for a set of states
+        at a particular time.
+        This is the fast GPU version
+
+        Parameters
+        ----------
+        states: ndarray(P, p) or torch.tensor(P, p)
+            Column choices in W corresponding to each particle
+        Vt: ndarray(M, 1) or torch.tensor(M, 1)
+            Observation for this time
+        
+        Returns
+        -------
+        ndarray(P) or torch.tensor(P)
+            Observation probabilities
+        """
+        if self.device == "np":
+            return self.observe_np(states, Vt)
+        else:
+            return self.observe_torch(states, Vt)

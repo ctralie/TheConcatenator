@@ -1,13 +1,11 @@
-import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KDTree
-from probutils import stochastic_universal_sample, do_KL_torch, count_top_activations, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
+from probutils import stochastic_universal_sample, do_KL, do_KL_torch, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
 from observer import Observer
 from propagator import Propagator
 from audioutils import get_windowed, hann_window
 from audiofeatures import AudioFeatureComputer
-import pyaudio
 import struct
 import time
 from threading import Lock
@@ -26,9 +24,14 @@ class ParticleFilter:
         self.chosen_idxs = [] # Keep track of chosen indices
         self.H = [] # Activations of chosen indices
 
-        self.states = torch.randint(self.N, size=(self.P, self.p), dtype=torch.int32).to(self.device) # Particles
-        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32)
-        self.ws = torch.from_numpy(self.ws).to(self.device) # Particle weights
+        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32) # Particle weights
+        if self.device == "np":
+            self.states = np.random.randint(self.N, size=(self.P, self.p))
+        else:
+            import torch
+            self.ws = torch.from_numpy(self.ws).to(self.device) 
+            self.states = torch.randint(self.N, size=(self.P, self.p), dtype=torch.int32).to(self.device) # Particles
+        
         self.all_ws = []
         self.fit = 0 # KL fit
         self.num_resample = 0
@@ -38,7 +41,7 @@ class ParticleFilter:
         # Setup an output buffer that doubles in size like an arraylist
         self.buf_out = np.zeros((self.n_channels, self.sr*60*10), dtype=np.float32)
 
-    def __init__(self, ycorpus, feature_params, particle_params, device="cpu", use_mic=False):
+    def __init__(self, ycorpus, feature_params, particle_params, device, use_mic=False):
         """
         ycorpus: ndarray(n_channels, n_samples)
             Stereo audio samples for the corpus
@@ -132,18 +135,26 @@ class ParticleFilter:
                 WPowers = np.maximum(WPowers, WPi)
         # Corpus is analyzed with hann window
         self.win_samples = np.array(hann_window(win), dtype=np.float32)
-        WCorpus = torch.concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
+        concatenate = np.concatenate
+        if self.device != "np":
+            import torch
+            concatenate = torch.concatenate
+        WCorpus = concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
         self.WCorpus = WCorpus
         # Shrink elements that are too small
         self.WAlpha = self.alpha*np.array(WPowers <= CORPUS_DB_CUTOFF, dtype=np.float32)
-        self.WAlpha = torch.from_numpy(self.WAlpha).to(self.device)
+        if self.device != "np":
+            import torch
+            self.WAlpha = torch.from_numpy(self.WAlpha).to(self.device)
         self.loud_enough_idx_map = np.arange(WCorpus.shape[1])[WPowers > CORPUS_DB_CUTOFF]
         print("{:.3f}% of corpus is above loudness threshold".format(100*self.loud_enough_idx_map.size/WCorpus.shape[1]))
 
         ## Step 2: Setup KDTree for proposal indices if requested
         self.proposal_tree = None
         if self.proposal_k > 0:
-            WCorpusNumpy = WCorpus.cpu().numpy()
+            WCorpusNumpy = WCorpus
+            if self.device != "np":
+                WCorpusNumpy = WCorpus.cpu().numpy()
             WMag = np.sqrt(np.sum(WCorpusNumpy.T**2, axis=1))
             WMag[WMag == 0] = 1
             WNorm = WCorpusNumpy.T/WMag[:, None] # Vector normalized version for KDTree
@@ -152,7 +163,7 @@ class ParticleFilter:
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
         self.N = N
-        self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature)
+        self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature, device)
         self.propagator = Propagator(N, self.pd, device)
         self.reset_state()
 
@@ -178,12 +189,13 @@ class ParticleFilter:
         self.pfinal_slider.config(value=self.pfinal)
 
     def setup_mic(self):
+        from pyaudio import PyAudio
         hop = self.win//2
         self.recorded_audio = []
         self.frame_mutex = Lock()
         self.temperature_mutex = Lock()
         self.processing_frame = False
-        self.audio = pyaudio.PyAudio()
+        self.audio = PyAudio()
         self.recording_started = False
         self.recording_finished = False
 
@@ -244,7 +256,8 @@ class ParticleFilter:
         self.tk_root.mainloop()
 
     def start_audio_recording(self):
-        self.stream = self.audio.open(format=pyaudio.paFloat32, 
+        from pyaudio import paFloat32
+        self.stream = self.audio.open(format=paFloat32, 
                             frames_per_buffer=self.hop, 
                             channels=max(self.n_channels, MIC_CHANNELS), 
                             rate=self.sr, 
@@ -275,7 +288,7 @@ class ParticleFilter:
         from scipy import sparse
         N = self.WCorpus.shape[1]
         T = len(self.H)
-        vals = np.array([h.cpu().numpy() for h in self.H]).flatten()
+        vals = np.array(self.H).flatten()
         print("Min h: {:.3f}, Max h: {:.3f}".format(np.min(vals), np.max(vals)))
         rows = np.array(self.chosen_idxs, dtype=int).flatten()
         cols = np.array(np.ones((1, self.pfinal))*np.arange(T)[:, None], dtype=int).flatten()
@@ -320,7 +333,10 @@ class ParticleFilter:
             If using mic, it should be win//2 samples
         """
         tic = time.time()
+        status_ret = None
         if self.use_mic:
+            from pyaudio import paContinue
+            status_ret = paContinue
             return_early = False
             with self.frame_mutex:
                 if self.processing_frame:
@@ -331,7 +347,7 @@ class ParticleFilter:
                     self.processing_frame = True
             if return_early:
                 print("Returning early", flush=True)
-                return s, pyaudio.paContinue
+                return s, paContinue
             fmt = "<"+"f"*(MIC_CHANNELS*self.win//2)
             x = np.array(struct.unpack(fmt, s), dtype=np.float32)
             x = np.reshape(x, (x.size//MIC_CHANNELS, MIC_CHANNELS)).T
@@ -358,7 +374,7 @@ class ParticleFilter:
         if self.use_mic:
             with self.frame_mutex:
                 self.processing_frame = False
-        return struct.pack("<"+"f"*ret.size, *ret), pyaudio.paContinue
+        return struct.pack("<"+"f"*ret.size, *ret), status_ret
     
     def audio_out(self, x):
         """
@@ -418,9 +434,13 @@ class ParticleFilter:
         ## Step 1: Aggregate max particles
         PTop = int(self.neff_thresh)
         N = self.WCorpus.shape[1]
-        ws = self.ws.cpu().numpy()
+        ws = self.ws
+        if self.device != "np":
+            ws = ws.cpu().numpy()
         idxs = np.argpartition(-ws, PTop)[0:PTop]
-        states = self.states[idxs, :].cpu().numpy()
+        states = self.states[idxs, :]
+        if self.device != "np":
+            states = states.cpu().numpy()
         ws = ws[idxs, None]*np.ones((1, states.shape[1]))
         states = states.flatten()
         ws = ws.flatten()
@@ -452,19 +472,30 @@ class ParticleFilter:
             print(".", end="", flush=True)
         ## Step 1: Do STFT of this window and sample from proposal distribution
         Vs = [self.feature_computer(self.win_samples*x[i, :]) for i in range(x.shape[0])]
-        Vt = torch.concatenate(tuple(Vs))
-        Vt = Vt.view(Vt.numel(), 1)
+        concatenate = np.concatenate
+        if self.device != "np":
+            import torch
+            concatenate = torch.concatenate
+        Vt = concatenate(tuple(Vs))
+        if self.device == "np":
+            Vt = np.reshape(Vt, (Vt.size, 1))
+        else:
+            Vt = Vt.view(Vt.numel(), 1)
         ## Step 1b: Sample proposal indices based on the observation
         proposal_idxs = []
         VtNorm = 0
         if self.proposal_k > 0:
-            Vtnp = Vt.cpu().numpy()
+            Vtnp = Vt
+            if self.device != "np":
+                Vtnp = Vt.cpu().numpy()
             VtNorm = np.sqrt(np.sum(Vtnp**2))
             if VtNorm > 0:
                 proposal_idxs = self.proposal_tree.query((Vtnp/VtNorm).T, self.proposal_k, return_distance=False).flatten()
                 proposal_idxs = self.loud_enough_idx_map[proposal_idxs]
                 proposal_idxs = np.array(proposal_idxs, dtype=np.int32)
-                proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
+                if self.device != "np":
+                    import torch
+                    proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
         if self.proposal_k == 0 or VtNorm == 0:
             self.propagator.propagate(self.states)
         else:
@@ -476,43 +507,72 @@ class ParticleFilter:
 
         ## Step 3: Figure out the activations for this timestep
         ## by aggregating multiple particles near the top
-        self.wsmax.append(torch.max(self.ws).item())
+        if self.device == "np":
+            self.wsmax.append(np.max(self.ws))
+        else:
+            import torch
+            self.wsmax.append(torch.max(self.ws).item())
         if self.use_top_particle:
             top_idxs = self.states[torch.argmax(self.ws), :]
         else:
             top_idxs = self.aggregate_top_activations()
         self.chosen_idxs.append(top_idxs)
 
-        h = do_KL_torch(self.WCorpus[:, top_idxs], self.WAlpha[top_idxs], Vt[:, 0], self.L)
-        self.H.append(h)
+        kl_fn = do_KL
+        if self.device != "np":
+            kl_fn = do_KL_torch
+        h = kl_fn(self.WCorpus[:, top_idxs], self.WAlpha[top_idxs], Vt[:, 0], self.L)
+        hnp = h
+        if self.device != "np":
+            hnp = h.cpu().numpy()
+        self.H.append(hnp)
         
         ## Step 4: Resample particles if effective number is too low
-        self.ws /= torch.sum(self.ws)
-        self.all_ws.append(self.ws.cpu().numpy())
-        self.neff.append((1/torch.sum(self.ws**2)).item())
+        if self.device == "np":
+            self.ws /= np.sum(self.ws)
+            self.all_ws.append(np.array(self.ws))
+            self.neff.append(1/np.sum(self.ws**2))
+        else:
+            import torch
+            self.ws /= torch.sum(self.ws)
+            self.all_ws.append(self.ws.cpu().numpy())
+            self.neff.append((1/torch.sum(self.ws**2)).item())
         if self.neff[-1] < self.neff_thresh:
             ## TODO: torch-ify stochastic universal sample
             self.num_resample += 1
             choices, _ = stochastic_universal_sample(self.all_ws[-1], len(self.ws))
-            choices = torch.from_numpy(np.array(choices, dtype=int)).to(self.device)
+            choices = np.array(choices, dtype=int)
+            if self.device != "np":
+                import torch
+                choices = torch.from_numpy(choices).to(self.device)
             self.states = self.states[choices, :]
-            self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
+            if self.device == "np":
+                self.ws = np.ones(self.ws.shape)/self.ws.size
+            else:
+                import torch
+                self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
         
         ## Step 5: Create and output audio samples for this window
         y = np.zeros_like(x)
         for i in range(x.shape[0]):
-            y[i, :] = self.WSound[i][:, top_idxs].dot(h.cpu().numpy())
+            y[i, :] = self.WSound[i][:, top_idxs].dot(hnp)
         self.audio_out(y)
 
         ## Step 6: Accumulate KL term for fit
-        WH = torch.matmul(self.WCorpus[:, top_idxs], h)
+        if self.device == "np":
+            WH = self.WCorpus[:, top_idxs].dot(h)
+        else:
+            WH = torch.matmul(self.WCorpus[:, top_idxs], h)
         Vt = Vt.flatten()
         # Take care of numerical issues
         Vt = Vt[WH > 0]
         WH = WH[WH > 0]
         WH = WH[Vt > 0]
         Vt = Vt[Vt > 0]
-        kl = (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
+        if self.device == "np":
+            kl = np.sum(Vt*np.log(Vt/WH) - Vt + WH)
+        else:
+            kl = (torch.sum(Vt*torch.log(Vt/WH) - Vt + WH)).item()
         self.fit += kl
 
     def plot_statistics(self):

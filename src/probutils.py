@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 from numba import jit
 
 def get_activations_diff(H, p):
@@ -212,7 +211,7 @@ def stochastic_universal_sample(ws, target_points):
     ws_new /= np.sum(ws_new)
     return choices, ws_new
 
-def do_KL(Wi, Vt, L):
+def do_KL(Wi, WAlpha, Vt, L):
     """
     Perform a KL-based NMF
 
@@ -220,6 +219,8 @@ def do_KL(Wi, Vt, L):
     ----------
     Wi: ndarray(M, p)
         Templates
+    WAlpha: ndarray(p)
+        L2 penalties for each activation
     Vt: ndarray(M)
         Observation
     L: int
@@ -238,7 +239,7 @@ def do_KL(Wi, Vt, L):
         WH = Wi.dot(hi)
         WH[WH == 0] = 1
         VLam = Vt/WH
-        hi *= ((Wi.T).dot(VLam)/Wd)
+        hi *= ((Wi.T).dot(VLam)/(Wd + WAlpha*hi))
     return hi
 
 def do_KL_torch(Wi, WAlpha, Vt, L):
@@ -261,6 +262,7 @@ def do_KL_torch(Wi, WAlpha, Vt, L):
     h: ndarray(p)
         Activations
     """
+    import torch
     hi = torch.rand(Wi.shape[1]).to(Wi)
     Wd = torch.sum(Wi, dim=0)
     Wd[Wd == 0] = 1

@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 
 def get_mel_filterbank(sr, win, mel_bands=40, min_freq=0.0, max_freq=8000):
     """
@@ -134,4 +133,8 @@ class AudioFeatureComputer:
         res = np.concatenate(tuple(components), axis=0)
         if x.shape == 0:
             res = res[:, 0]
-        return torch.from_numpy(np.array(res, dtype=np.float32)).to(self.device)
+        res = np.array(res, dtype=np.float32)
+        if self.device != "np":
+            from torch import from_numpy
+            res = from_numpy(res).to(self.device)
+        return res
