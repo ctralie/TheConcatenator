@@ -62,7 +62,7 @@ class Observer:
         Wi = self.W[:, states]
         Wi = np.moveaxis(Wi, 1, 0)
         Wd = self.WDenom[states].reshape((P, p))
-        hi = np.random.rand(P, p, 1)
+        hi = np.random.rand(P, p)
         Vt = np.reshape(Vt, (1, Vt.size))
         alpha = self.WAlpha[states].reshape((P, p))
         for _ in range(self.L):
@@ -75,7 +75,7 @@ class Observer:
         Vi[Vi == 0] = 1
         logarg = Vt/Vi
         logarg[logarg == 0] = 1
-        kls = np.mean(Vt*np.log(logarg) - Vt + Vi, dim=1)
+        kls = np.mean(Vt*np.log(logarg) - Vt + Vi, axis=1)
         ## Step 3: Compute observation probabilities
         with self.temperature_mutex:
             obs_prob = np.exp(-self.temperature*kls)
