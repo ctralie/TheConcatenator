@@ -1,6 +1,7 @@
 import numpy as np
 from threading import Lock
 
+
 class Observer:
     def __init__(self, p, W, WAlpha, L, temperature, device):
         """
@@ -60,18 +61,17 @@ class Observer:
         P = states.shape[0]
         p = states.shape[1]
         Wi = self.W[:, states]
-        Wi = np.moveaxis(Wi, 1, 0)
         Wd = self.WDenom[states].reshape((P, p))
-        hi = np.random.rand(P, p)
+        hi = np.random.rand(P, p).astype(np.float32)
         Vt = np.reshape(Vt, (1, Vt.size))
         alpha = self.WAlpha[states].reshape((P, p))
         for _ in range(self.L):
-            WH = np.einsum('ijk,ik->ij', Wi, hi)
+            WH = np.einsum('jik,ik->ij', Wi, hi)
             WH[WH == 0] = 1
             VLam = Vt/WH
-            hi *= np.einsum('ijk,ij->ik', Wi, VLam)/(Wd + alpha*hi)
+            hi *= np.einsum('jik,ij->ik', Wi, VLam)/(Wd + alpha*hi)
         ## Step 2: Compute KL divergences
-        Vi = np.einsum('ijk,ik->ij', Wi, hi)
+        Vi = np.einsum('jik,ik->ij', Wi, hi)
         Vi[Vi == 0] = 1
         logarg = Vt/Vi
         logarg[logarg == 0] = 1
