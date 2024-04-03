@@ -56,6 +56,8 @@ if __name__ == '__main__':
     print("Loading corpus audio...")
     tic = time.time()
     ycorpus = load_corpus(opt.corpus, sr=opt.sr, stereo=(opt.stereo==1))
+    print("ycorpus.shape", ycorpus.shape)
+    print("Corpus is {:.2f} seconds long".format(ycorpus.shape[1]/opt.sr))
     print("Finished loading up corpus audio: Elapsed Time {:.3f} seconds".format(time.time()-tic))
 
     feature_params = dict(

@@ -64,6 +64,9 @@ def do_batch_with_params(pfiles, feature_params, particle_params):
         particle_params["pd"],
         particle_params["proposal_k"]
     )
+    if (particle_params["use_mel"]):
+        id += "mel_"
+
     outfilenames = [f[0:-4] + id + corpusname + ".pkl" for f in pfiles]
     not_finished = [not os.path.exists(f) for f in outfilenames]
     files = [f for (f, n) in zip(pfiles, not_finished) if n]
@@ -96,10 +99,12 @@ def do_batch_with_params(pfiles, feature_params, particle_params):
 ## Slice 1: Different numbers of particles and proposal distribution
 ## Plots: Show Driedger p=0,5,10 against these
 print("Doing slice 1")
-particle_params["pd"] = 0.9
-particle_params["temperature"] = 10
+particle_params["pd"] = 0.95
+particle_params["temperature"] = 50
 particle_params["p"] = 5
 particle_params["pfinal"] = 5
+particle_params["use_stft"] = False
+particle_params["use_mel"] = True
 for P in [100, 1000, 10000]:
     particle_params["P"] = P
     particle_params["neff_thresh"] = 0.1*P

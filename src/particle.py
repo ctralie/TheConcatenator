@@ -5,7 +5,7 @@ from sklearn.neighbors import KDTree
 from probutils import stochastic_universal_sample, do_KL_torch, count_top_activations, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
 from observer import Observer
 from propagator import Propagator
-from audioutils import get_windowed, hann_window, tri_window
+from audioutils import get_windowed, hann_window
 from audiofeatures import AudioFeatureComputer
 import pyaudio
 import struct
@@ -14,6 +14,7 @@ from threading import Lock
 from tkinter import Tk, ttk
 
 CORPUS_DB_CUTOFF = -50
+MIC_CHANNELS = 2 # Always use 2 mic channels (since it seems to want to do this anyway)
 
 class ParticleFilter:
     def reset_state(self):
@@ -245,7 +246,7 @@ class ParticleFilter:
     def start_audio_recording(self):
         self.stream = self.audio.open(format=pyaudio.paFloat32, 
                             frames_per_buffer=self.hop, 
-                            channels=self.n_channels, 
+                            channels=max(self.n_channels, MIC_CHANNELS), 
                             rate=self.sr, 
                             output=True, 
                             input=True, 
@@ -331,10 +332,12 @@ class ParticleFilter:
             if return_early:
                 print("Returning early", flush=True)
                 return s, pyaudio.paContinue
-            nc = self.n_channels
-            fmt = "<"+"f"*(self.n_channels*self.win//2)
+            fmt = "<"+"f"*(MIC_CHANNELS*self.win//2)
             x = np.array(struct.unpack(fmt, s), dtype=np.float32)
-            x = np.reshape(x, (x.size//nc, nc)).T
+            x = np.reshape(x, (x.size//MIC_CHANNELS, MIC_CHANNELS)).T
+            if self.n_channels == 1:
+                # Mix to mono
+                x = np.mean(x, axis=0, keepdims=True)
             self.recorded_audio.append(x)
         else:
             x = s
@@ -348,7 +351,10 @@ class ParticleFilter:
         # Output the audio that's ready
         T = len(self.chosen_idxs)
         idx = hop*(T-1) # Start index
-        ret = (self.buf_out[:, idx:idx+hop].T).flatten()
+        ret = self.buf_out[:, idx:idx+hop].T
+        if self.n_channels == 1:
+            ret = np.concatenate((ret, ret), axis=1)
+        ret = ret.flatten()
         if self.use_mic:
             with self.frame_mutex:
                 self.processing_frame = False
