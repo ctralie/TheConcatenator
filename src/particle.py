@@ -9,10 +9,9 @@ from audiofeatures import AudioFeatureComputer
 import struct
 import time
 from threading import Lock
-from tkinter import Tk, ttk
+from tkinter import Tk, ttk, StringVar, OptionMenu
 
 CORPUS_DB_CUTOFF = -50
-MIC_CHANNELS = 2 # Always use 2 mic channels (since it seems to want to do this anyway)
 
 class ParticleFilter:
     def reset_state(self):
@@ -124,6 +123,7 @@ class ParticleFilter:
         self.feature_computer = AudioFeatureComputer(**feature_params)
         n_channels = ycorpus.shape[0]
         self.n_channels = n_channels
+        self.mic_channels = 1
         self.WSound = []
         WPowers = [] # Store the maximum power over all channels
         for i in range(n_channels):
@@ -208,6 +208,20 @@ class ParticleFilter:
         row += 1
         self.record_button = ttk.Button(f, text="Start Recording", command=self.start_audio_recording)
         self.record_button.grid(column=0, row=row)
+        self.device2obj = {}
+        devices = []
+        for i in range(self.audio.get_device_count()):
+            # https://forums.raspberrypi.com/viewtopic.php?t=71062
+            dev = self.audio.get_device_info_by_index(i)
+            if dev["maxInputChannels"] > 0:
+                dev["i"] = i
+                devices.append(dev['name'])
+                self.device2obj[dev['name']] = dev
+        self.dev_clicked = StringVar()
+        self.dev_clicked.set(devices[0])
+        self.dev_drop = OptionMenu(f, self.dev_clicked, *devices)
+        self.dev_drop.grid(column=1, row=row)
+
         row += 1
         # Temperature slider
         self.temp_label = ttk.Label(f, text="temperature")
@@ -241,10 +255,18 @@ class ParticleFilter:
         self.update_pfinal(self.pfinal)
         """
 
-        ## Step 2: Run one frame with dummy data to precompile all kernels
+        ## Step 2: Start loop!
+        self.tk_root.mainloop()
+
+    def start_audio_recording(self):
+        from pyaudio import paFloat32
+        dev = self.device2obj[self.dev_clicked.get()]
+        self.mic_channels = min(dev["maxInputChannels"], self.n_channels)
+        ## Step 1: Run one frame with dummy data to precompile all kernels
         ## Use high amplitude random noise to get it to jump around a lot
-        bstr = np.array(np.random.rand(hop*2), dtype=np.float32)
-        bstr = struct.pack("<"+"f"*hop*2, *bstr)
+        hop = self.win//2
+        bstr = np.array(np.random.rand(hop*self.mic_channels), dtype=np.float32)
+        bstr = struct.pack("<"+"f"*hop*self.mic_channels, *bstr)
         for _ in range(20):
             self.audio_in(bstr)
         self.reset_state()
@@ -252,15 +274,12 @@ class ParticleFilter:
         self.buf_in *= 0
         self.buf_out *= 0
 
-        ## Step 3: Start loop!
-        self.tk_root.mainloop()
-
-    def start_audio_recording(self):
-        from pyaudio import paFloat32
+        ## Step 2: Setup stream
         self.stream = self.audio.open(format=paFloat32, 
                             frames_per_buffer=self.hop, 
-                            channels=max(self.n_channels, MIC_CHANNELS), 
+                            channels=self.mic_channels, 
                             rate=self.sr, 
+                            input_device_index = dev["i"],
                             output=True, 
                             input=True, 
                             stream_callback=self.audio_in)
@@ -348,12 +367,9 @@ class ParticleFilter:
             if return_early:
                 print("Returning early", flush=True)
                 return s, paContinue
-            fmt = "<"+"f"*(MIC_CHANNELS*self.win//2)
+            fmt = "<"+"f"*(self.mic_channels*self.win//2)
             x = np.array(struct.unpack(fmt, s), dtype=np.float32)
-            x = np.reshape(x, (x.size//MIC_CHANNELS, MIC_CHANNELS)).T
-            if self.n_channels == 1:
-                # Mix to mono
-                x = np.mean(x, axis=0, keepdims=True)
+            x = np.reshape(x, (x.size//self.mic_channels, self.mic_channels)).T
             self.recorded_audio.append(x)
         else:
             x = s
@@ -368,8 +384,6 @@ class ParticleFilter:
         T = len(self.chosen_idxs)
         idx = hop*(T-1) # Start index
         ret = self.buf_out[:, idx:idx+hop].T
-        if self.n_channels == 1:
-            ret = np.concatenate((ret, ret), axis=1)
         ret = ret.flatten()
         if self.use_mic:
             with self.frame_mutex:

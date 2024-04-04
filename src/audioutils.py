@@ -122,7 +122,8 @@ def load_corpus(path, sr, stereo, amp_normalize=True):
     files = [path]
     if os.path.isdir(path):
         files = glob.glob(path + "/*")
-    for f in files:
+    N = 0
+    for f in sorted(files):
         try:
             x, sr = librosa.load(f, sr=sr, mono=not stereo)
             if amp_normalize:
@@ -131,8 +132,14 @@ def load_corpus(path, sr, stereo, amp_normalize=True):
                     x = x/norm
             if stereo and len(x.shape) == 1:
                 x = np.array([x, x])
+            if stereo:
+                N += x.shape[1]
+            else:
+                N += x.size
+            print("Finished {}, length {}".format(f, N/sr))
             samples.append(x)
         except:
+            
             pass
     if len(samples) == 0:
         print("Error: No usable files found at ", path)
