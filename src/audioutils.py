@@ -106,6 +106,52 @@ def do_windowed_sum(WSound, H, win, hop):
         y[j*hop:j*hop+win] += yh[:, j]
     return y
 
+def load_audio(filename, sr=44100, mono=True):
+    """
+    Load an audio waveform from a file.  Try to use ffmpeg
+    to convert it to a .wav file so scipy's fast wavfile loader
+    can work.  Otherwise, fall back to the slower librosa
+
+    Parameters
+    ----------
+    filename: string
+        Path to audio file to load
+    sr: int
+        Sample rate to use
+    mono: bool
+        If true, use mono.  Otherwise, use stereo
+    
+    Returns
+    -------
+    y: ndarray(N)
+        Audio samples
+    sr: int
+        The sample rate that was actually used
+    """
+    try:
+        # First, try a faster version of loading audio
+        from scipy.io import wavfile
+        import subprocess
+        import os
+        FFMPEG_BINARY = "ffmpeg"
+        wavfilename = "%s.wav"%filename
+        if os.path.exists(wavfilename):
+            os.remove(wavfilename)
+        ac = "1"
+        if not mono:
+            ac = "2"
+        subprocess.call([FFMPEG_BINARY, "-i", filename, "-ar", "%i"%sr, "-ac", ac, wavfilename], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        _, y = wavfile.read(wavfilename)
+        y = y.T
+        y = y/2.0**15
+        os.remove(wavfilename)
+        return y, sr
+    except:
+        # Otherwise, fall back to librosa
+        warnings.warn("Falling back to librosa for audio reading, which may be slow for long audio files")
+        import librosa
+        return librosa.load(filename, sr=sr, mono=mono)
+
 def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
     """
     Load a corpus of audio
@@ -155,7 +201,7 @@ def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
 
     for f in sorted(files):
         try:
-            x, sr = librosa.load(f, sr=sr, mono=not stereo)
+            x, sr = load_audio(f, sr=sr, mono=not stereo)
             for p in range(shift_min, shift_max+1):
                 if p != 0:
                     print("Pitch shifting", f, "by", p, "halfsteps...")
