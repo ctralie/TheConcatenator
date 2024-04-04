@@ -229,6 +229,11 @@ Though the main algorithm stands on its own, we have implemented several improve
 
 
 
+\textbf{Regularizing Quiet Moments in The Corpus.}
+
+Talk about regularization and proposal distribution
+
+
 \textbf{Mel Spectrograms.} The computational complexity scales linearly with $P$, so lowering $P$ makes the system run faster, but it is also possible to decrease $M$ without sacrificing much quality.  One can replace the full spectrogram wiht a mel-spaced spectrogram with many fewer bins.  In fact, Schwarz's Caterpillar system did something very similar suggesting \cite{schwarz2000system}, and we see results quite similar to the full on STFT (Section~\ref{sec:quantitativeevaluation}).
 
 
@@ -236,15 +241,12 @@ Though the main algorithm stands on its own, we have implemented several improve
 
 Note that \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} did something similar
 
-\textbf{Regularizing Quiet Moments in The Corpus.}
-
-Talk about regularization and proposal distribution
 
 
 
-\section{Mathematical Analysis}
+\section{Practical Considerations}
 
-\subsection{Picking Good Activations}
+\subsection{How Many Particles?}
 \label{sec:activationprob}
 
 In practice, seemingly few particles are surprisingly effective at picking up on activations that fit the target well, which we explain with a simple probabilistic argument.  Given a corpus with $N$ sound grains (including pitch shifts) and $P$ particles that each capture $p$ activations, suppose that we have a hypothetical ``ideal particle'' $\hat{h}$ with the $p$ best activations that work together to match a target.  Since activations adapt to the target when they are randomly resampled with probability $p_d$, the probability of jumping to at least one of the top $k$ activations of $\hat{h}$ at a particular timestep is 
@@ -268,6 +270,11 @@ We also note that once one of the particles catches on to a good activation, it 
 \subsection{Diagonal Enhancement}
 
 Talk about negative binomial, but how it's complicated because of the way probabilities are aggregated and time-continuous activations are promoted during aggregation.  Show example plot of diagonal distribution for different $p_d$, and show a plot of Driedger as a comparison
+
+What's interesting about Driedger is even if you set p=1, there may be more than one source active at a given time.  Whereas in this technique, there is always exactly one source if p=1.  Sometimes that sounds worse than Driedger actually because it jumps back and forth between two near guesses.  So I usually find p > 1 is better.
+
+\subsection{Pitch Shifting}
+
 
 
 \section{Evaluation}
