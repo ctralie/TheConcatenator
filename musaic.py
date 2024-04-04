@@ -57,8 +57,7 @@ if __name__ == '__main__':
     parser.add_argument('--temperature', type=float, default=50, help="Target importance.  Higher values mean activations will jump around more to match the target.")
     parser.add_argument('--shiftMin', type=int, default=0, help="Lowest halfstep by which to shift corpus")
     parser.add_argument('--shiftMax', type=int, default=0, help="Highest halfstep by which to shift corpus")
-    
-    
+    parser.add_argument('--targetShift', type=float, default=0, help="Number of halfsteps by which to pitch shift the target")
     parser.add_argument('--saveplots', type=int, default=1, help='Save plots of iterations to disk')
     opt = parser.parse_args()
 
@@ -103,7 +102,8 @@ if __name__ == '__main__':
         r=opt.r,
         neff_thresh=0.1*opt.particles,
         alpha=opt.alpha,
-        use_top_particle=opt.useTopParticle == 1
+        use_top_particle=opt.useTopParticle == 1,
+        target_shift=opt.targetShift
     )
     pf = ParticleFilter(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic")
     if opt.target == "mic":

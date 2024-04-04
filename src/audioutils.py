@@ -123,7 +123,7 @@ def load_audio(filename, sr=44100, mono=True):
     
     Returns
     -------
-    y: ndarray(N)
+    y: ndarray(n_channels, N)
         Audio samples
     sr: int
         The sample rate that was actually used
@@ -134,17 +134,24 @@ def load_audio(filename, sr=44100, mono=True):
         import subprocess
         import os
         FFMPEG_BINARY = "ffmpeg"
-        wavfilename = "%s.wav"%filename
-        if os.path.exists(wavfilename):
+        # Append a random int to the file in the rare use case that two processes
+        # are running at the same time and loading the same file
+        if filename[-3:].lower() != "wav":
+            wavfilename = "{}_{}.wav".format(filename, np.random.randint(999999999))
+            if os.path.exists(wavfilename):
+                os.remove(wavfilename)
+            ac = "1"
+            if not mono:
+                ac = "2"
+            subprocess.call([FFMPEG_BINARY, "-i", filename, "-ar", "%i"%sr, "-ac", ac, wavfilename], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            _, y = wavfile.read(wavfilename)
             os.remove(wavfilename)
-        ac = "1"
-        if not mono:
-            ac = "2"
-        subprocess.call([FFMPEG_BINARY, "-i", filename, "-ar", "%i"%sr, "-ac", ac, wavfilename], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        _, y = wavfile.read(wavfilename)
+        else:
+            _, y = wavfile.read(filename)
         y = y.T
         y = y/2.0**15
-        os.remove(wavfilename)
+        if mono and y.shape[0] > 1:
+            y = y[0, :]
         return y, sr
     except:
         # Otherwise, fall back to librosa

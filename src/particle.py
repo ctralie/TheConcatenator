@@ -106,6 +106,8 @@ class ParticleFilter:
             use_top_particle: bool
                 If True, only take activations from the top particle at each step.
                 If False, aggregate 
+            target_shift: float
+                Number of halfsteps by which to pitch shift the target
         }
         device: string
             Device string for torch
@@ -137,6 +139,10 @@ class ParticleFilter:
         self.wet_mutex = Lock()
 
         ## Step 1: Compute features for corpus
+        self.target_shift = 0
+        if "target_shift" in particle_params:
+            self.target_shift = particle_params["target_shift"]
+        self.target_shift_mutex = Lock()
         feature_params["device"] = device
         self.feature_computer = AudioFeatureComputer(**feature_params)
         n_channels = ycorpus.shape[0]
@@ -194,6 +200,13 @@ class ParticleFilter:
     def update_wet(self, value):
         with self.wet_mutex:
             self.wet = float(value)
+    
+
+    def update_target_shift(self, value):
+        with self.target_shift_mutex:
+            self.target_shift = float(value)
+            self.target_shift_label.config(text="shift ({:.1f})".format(self.target_shift))
+
 
     def update_temperature(self, value):
         self.temperature = float(value)
@@ -253,6 +266,18 @@ class ParticleFilter:
             self.wet_slider.bind("<ButtonRelease-{}>".format(i), fn) 
         self.wet_slider.grid(column=0, row=row)
         self.update_wet(self.wet)
+        row += 1
+
+        ## Pitch Shift slider
+        self.target_shift_label = ttk.Label(f, text="Pitch Shift")
+        self.target_shift_label.grid(column=1, row=row)
+        self.target_shift_slider = ttk.Scale(f, from_=-7, to=7, length=400, value=0, orient="horizontal", command=self.update_target_shift)
+        # TODO: This is a hacky way to get things to update on release!
+        fn = lambda _: self.update_target_shift(self.target_shift_slider.get())
+        #for i in [1, 2, 3]:
+        #    self.target_shift_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.target_shift_slider.grid(column=0, row=row)
+        self.update_target_shift(self.target_shift)
         row += 1
 
         ## Temperature slider
@@ -519,7 +544,8 @@ class ParticleFilter:
         if len(self.H)%10 == 0:
             print(".", end="", flush=True)
         ## Step 1: Do STFT of this window and sample from proposal distribution
-        Vs = [self.feature_computer(self.win_samples*x[i, :]) for i in range(x.shape[0])]
+        with self.target_shift_mutex:
+            Vs = [self.feature_computer(self.win_samples*x[i, :], self.target_shift) for i in range(x.shape[0])]
         concatenate = np.concatenate
         if self.device != "np":
             import torch

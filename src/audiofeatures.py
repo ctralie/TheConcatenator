@@ -125,15 +125,21 @@ class AudioFeatureComputer:
         if self.use_mel:
             self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
     
-    def __call__(self, x):
+    def __call__(self, x, shift=0):
         """
         Parameters
         ----------
         x: ndarray(win) or ndarray(win, n_frames)
             Pre-windowed audio frames
+        shift: float
+            Amount by which to shift this feature
         """
         if len(x.shape) == 1:
             x = x[:, None]
+        if shift != 0:
+            from librosa.effects import pitch_shift
+            for k in range(x.shape[1]):
+                x[:, k] = pitch_shift(x[:, k], sr=self.sr, n_steps=shift)
         S = np.abs(np.fft.rfft(x, axis=0))
         components = []
         if self.use_stft:
