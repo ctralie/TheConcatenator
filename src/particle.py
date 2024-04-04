@@ -30,6 +30,18 @@ from tkinter import Tk, ttk, StringVar, OptionMenu
 CORPUS_DB_CUTOFF = -50
 
 class ParticleFilter:
+    def reset_particles(self):
+        """
+        Randomly reset particles, each with the same weight 1/P
+        """
+        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32) # Particle weights
+        if self.device == "np":
+            self.states = np.random.randint(self.N, size=(self.P, self.p))
+        else:
+            import torch
+            self.ws = torch.from_numpy(self.ws).to(self.device) 
+            self.states = torch.randint(self.N, size=(self.P, self.p), dtype=torch.int32).to(self.device) # Particles
+
     def reset_state(self):
         self.neff = [] # Number of effective particles over time
         self.wsmax = [] # Max weights over time
@@ -38,15 +50,7 @@ class ParticleFilter:
         self.frame_times = [] # Keep track of time to process each frame
         self.chosen_idxs = [] # Keep track of chosen indices
         self.H = [] # Activations of chosen indices
-
-        self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32) # Particle weights
-        if self.device == "np":
-            self.states = np.random.randint(self.N, size=(self.P, self.p))
-        else:
-            import torch
-            self.ws = torch.from_numpy(self.ws).to(self.device) 
-            self.states = torch.randint(self.N, size=(self.P, self.p), dtype=torch.int32).to(self.device) # Particles
-        
+        self.reset_particles()
         self.all_ws = []
         self.fit = 0 # KL fit
         self.num_resample = 0
@@ -259,11 +263,7 @@ class ParticleFilter:
         ## Wet/dry slider
         self.wet_label = ttk.Label(f, text="Wet")
         self.wet_label.grid(column=1, row=row)
-        self.wet_slider = ttk.Scale(f, from_=0, to=1, length=400, value=1, orient="horizontal")
-        # TODO: This is a hacky way to get things to update on release!
-        fn = lambda _: self.update_wet(self.wet_slider.get())
-        for i in [1, 2, 3]:
-            self.wet_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.wet_slider = ttk.Scale(f, from_=0, to=1, length=400, value=1, orient="horizontal", command=self.update_wet)
         self.wet_slider.grid(column=0, row=row)
         self.update_wet(self.wet)
         row += 1
@@ -271,11 +271,7 @@ class ParticleFilter:
         ## Pitch Shift slider
         self.target_shift_label = ttk.Label(f, text="Pitch Shift")
         self.target_shift_label.grid(column=1, row=row)
-        self.target_shift_slider = ttk.Scale(f, from_=-7, to=7, length=400, value=0, orient="horizontal", command=self.update_target_shift)
-        # TODO: This is a hacky way to get things to update on release!
-        fn = lambda _: self.update_target_shift(self.target_shift_slider.get())
-        #for i in [1, 2, 3]:
-        #    self.target_shift_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.target_shift_slider = ttk.Scale(f, from_=-12, to=12, length=400, value=0, orient="horizontal", command=self.update_target_shift)
         self.target_shift_slider.grid(column=0, row=row)
         self.update_target_shift(self.target_shift)
         row += 1
@@ -283,11 +279,7 @@ class ParticleFilter:
         ## Temperature slider
         self.temp_label = ttk.Label(f, text="temperature")
         self.temp_label.grid(column=1, row=row)
-        self.temp_slider = ttk.Scale(f, from_=0, to=max(50, self.temperature*1.5), length=400, value=self.temperature, orient="horizontal")
-        # TODO: This is a hacky way to get things to update on release!
-        fn = lambda _: self.update_temperature(self.temp_slider.get())
-        for i in [1, 2, 3]:
-            self.temp_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.temp_slider = ttk.Scale(f, from_=0, to=max(50, self.temperature*1.5), length=400, value=self.temperature, orient="horizontal", command=self.update_temperature)
         self.temp_slider.grid(column=0, row=row)
         self.update_temperature(self.temperature)
         row += 1
@@ -295,12 +287,7 @@ class ParticleFilter:
         ## pd slider
         self.pd_label = ttk.Label(f, text="pd")
         self.pd_label.grid(column=1, row=row)
-        mx = 1-2/self.P # Leave enough room to jump to at least one particle
-        self.pd_slider = ttk.Scale(f, from_=0.5, to=mx, length=400, value=self.pd, orient="horizontal")
-        # TODO: This is a hacky way to get things to update on release!
-        fn = lambda _: self.update_pd(self.pd_slider.get())
-        for i in [1, 2, 3]:
-            self.pd_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.pd_slider = ttk.Scale(f, from_=0.5, to=1, length=400, value=self.pd, orient="horizontal", command=self.update_pd)
         self.pd_slider.grid(column=0, row=row)
         self.update_pd(self.pd)
         row += 1
@@ -312,6 +299,10 @@ class ParticleFilter:
         self.pfinal_slider.grid(column=0, row=row)
         self.update_pfinal(self.pfinal)
         """
+
+        self.reset_button = ttk.Button(f, text="Reset Particles", command=self.reset_particles)
+        self.reset_button.grid(column=0, row=row)
+        row += 1
 
         ## Step 2: Start loop!
         self.tk_root.mainloop()
