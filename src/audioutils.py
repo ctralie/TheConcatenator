@@ -149,7 +149,7 @@ def load_audio(filename, sr=44100, mono=True):
         _, y = wavfile.read(filename)
     y = y.T
     y = y/2.0**15
-    if mono and y.shape[0] > 1:
+    if mono and len(y.shape) > 1 and y.shape[0] > 1:
         y = y[0, :]
     return y, sr
 
