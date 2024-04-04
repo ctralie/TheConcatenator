@@ -106,7 +106,7 @@ def do_windowed_sum(WSound, H, win, hop):
         y[j*hop:j*hop+win] += yh[:, j]
     return y
 
-def load_corpus(path, sr, stereo, amp_normalize=True):
+def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
     """
     Load a corpus of audio
 
@@ -120,6 +120,10 @@ def load_corpus(path, sr, stereo, amp_normalize=True):
         If true, load stereo.  If false, load mono
     amp_normalize: bool
         If True (default), normalize the audio sample range to be in [-1, 1]
+    shift_min: int
+        Lowest halfstep by which to shift corpus
+    shift_max: int
+        Highest halfstep by which to shift corpus
     
     Returns
     -------
@@ -139,9 +143,24 @@ def load_corpus(path, sr, stereo, amp_normalize=True):
         files = glob.glob(path + os.path.sep + "**", recursive=True)
         files = [f for f in files if os.path.isfile(f)]
     N = 0
+    pitch_shift = librosa.effects.pitch_shift
+    try:
+        import pyrubberband
+        pitch_shift = pyrubberband.pyrb.pitch_shift
+        print("Using rubberband")
+    except:
+        rg = list(range(shift_min, shift_max+1))
+        if len(rg) > 1 or rg[0] != 0:
+            print("Warning: pyrubberband not found.  Using simpler phase vocoder for pitch shifting")
+
     for f in sorted(files):
         try:
             x, sr = librosa.load(f, sr=sr, mono=not stereo)
+            for p in range(shift_min, shift_max+1):
+                if p != 0:
+                    print("Pitch shifting", f, "by", p, "halfsteps...")
+                    xs = pitch_shift(x, sr=sr, n_steps=p)
+                    x = np.concatenate((x, xs), axis=0)
             if amp_normalize:
                 norm = np.max(np.abs(x))
                 if norm > 0:
@@ -155,7 +174,6 @@ def load_corpus(path, sr, stereo, amp_normalize=True):
             print("Finished {}, length {}".format(f, N/sr))
             samples.append(x)
         except:
-            
             pass
     if len(samples) == 0:
         print("Error: No usable files found at ", path)

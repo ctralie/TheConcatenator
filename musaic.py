@@ -55,6 +55,10 @@ if __name__ == '__main__':
     parser.add_argument('--useTopParticle', type=int, default=0, help="If true, take activations only from the top particle.  Otherwise, aggregate them")
     parser.add_argument('--proposalK', type=int, default=0, help="Number of nearest neighbors to use in proposal distribution (if 0, don't use proposal distribution)")
     parser.add_argument('--temperature', type=float, default=50, help="Target importance.  Higher values mean activations will jump around more to match the target.")
+    parser.add_argument('--shiftMin', type=int, default=0, help="Lowest halfstep by which to shift corpus")
+    parser.add_argument('--shiftMax', type=int, default=0, help="Highest halfstep by which to shift corpus")
+    
+    
     parser.add_argument('--saveplots', type=int, default=1, help='Save plots of iterations to disk')
     opt = parser.parse_args()
 
@@ -70,7 +74,10 @@ if __name__ == '__main__':
 
     print("Loading corpus audio...")
     tic = time.time()
-    ycorpus = load_corpus(opt.corpus, sr=opt.sr, stereo=(opt.stereo==1))
+    ycorpus = load_corpus(opt.corpus, sr=opt.sr, 
+                          stereo=(opt.stereo==1),
+                          shift_min=opt.shiftMin,
+                          shift_max=opt.shiftMax)
     print("ycorpus.shape", ycorpus.shape)
     print("Corpus is {:.2f} seconds long".format(ycorpus.shape[1]/opt.sr))
     print("Finished loading up corpus audio: Elapsed Time {:.3f} seconds".format(time.time()-tic))
@@ -113,7 +120,7 @@ if __name__ == '__main__':
     generated = pf.get_generated_audio()
     wavfile.write(opt.result, opt.sr, generated)
 
-    print("\n\nMean frame time: {:.3f}ms\nRequired Upper Bound: {:.3f}ms\n".format(1000*np.mean(pf.frame_times), 500*opt.winSize/opt.sr))
+    print("\n\nMean frame time: {:.3f}ms\nUpper Bound Budget: {:.3f}ms\n".format(1000*np.mean(pf.frame_times), 500*opt.winSize/opt.sr))
     
 
     if opt.saveplots == 1:
