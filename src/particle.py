@@ -133,6 +133,8 @@ class ParticleFilter:
         self.sr = sr
         hop = win//2
         self.hop = hop
+        self.wet = 1
+        self.wet_mutex = Lock()
 
         ## Step 1: Compute features for corpus
         feature_params["device"] = device
@@ -189,10 +191,14 @@ class ParticleFilter:
         if use_mic:
             self.setup_mic()
             
+    def update_wet(self, value):
+        with self.wet_mutex:
+            self.wet = float(value)
+
     def update_temperature(self, value):
-        with self.temperature_mutex:
-            self.temperature = float(value)
+        self.temperature = float(value)
         self.temp_label.config(text="temperature ({:.1f})".format(self.temperature))
+        self.observer.update_temperature(self.temperature)
     
     def update_pd(self, value):
         self.pd = float(value)
@@ -206,10 +212,8 @@ class ParticleFilter:
 
     def setup_mic(self):
         from pyaudio import PyAudio
-        hop = self.win//2
         self.recorded_audio = []
         self.frame_mutex = Lock()
-        self.temperature_mutex = Lock()
         self.processing_frame = False
         self.audio = PyAudio()
         self.recording_started = False
@@ -237,25 +241,38 @@ class ParticleFilter:
         self.dev_clicked.set(devices[0])
         self.dev_drop = OptionMenu(f, self.dev_clicked, *devices)
         self.dev_drop.grid(column=1, row=row)
-
         row += 1
-        # Temperature slider
+
+        ## Wet/dry slider
+        self.wet_label = ttk.Label(f, text="Wet")
+        self.wet_label.grid(column=1, row=row)
+        self.wet_slider = ttk.Scale(f, from_=0, to=1, length=400, value=1, orient="horizontal")
+        # TODO: This is a hacky way to get things to update on release!
+        fn = lambda _: self.update_wet(self.wet_slider.get())
+        for i in [1, 2, 3]:
+            self.wet_slider.bind("<ButtonRelease-{}>".format(i), fn) 
+        self.wet_slider.grid(column=0, row=row)
+        self.update_wet(self.wet)
+        row += 1
+
+        ## Temperature slider
         self.temp_label = ttk.Label(f, text="temperature")
         self.temp_label.grid(column=1, row=row)
         self.temp_slider = ttk.Scale(f, from_=0, to=max(50, self.temperature*1.5), length=400, value=self.temperature, orient="horizontal")
-        ## TODO: This is a hacky way to get things to update on release!
+        # TODO: This is a hacky way to get things to update on release!
         fn = lambda _: self.update_temperature(self.temp_slider.get())
         for i in [1, 2, 3]:
             self.temp_slider.bind("<ButtonRelease-{}>".format(i), fn) 
         self.temp_slider.grid(column=0, row=row)
         self.update_temperature(self.temperature)
         row += 1
-        # pd slider
+
+        ## pd slider
         self.pd_label = ttk.Label(f, text="pd")
         self.pd_label.grid(column=1, row=row)
         mx = 1-2/self.P # Leave enough room to jump to at least one particle
         self.pd_slider = ttk.Scale(f, from_=0.5, to=mx, length=400, value=self.pd, orient="horizontal")
-        ## TODO: This is a hacky way to get things to update on release!
+        # TODO: This is a hacky way to get things to update on release!
         fn = lambda _: self.update_pd(self.pd_slider.get())
         for i in [1, 2, 3]:
             self.pd_slider.bind("<ButtonRelease-{}>".format(i), fn) 
@@ -423,7 +440,8 @@ class ParticleFilter:
             new_out[:, 0:N] = self.buf_out
             self.buf_out = new_out
         idx = hop*(T-1) # Start index
-        self.buf_out[:, idx:idx+win] += x
+        with self.wet_mutex:
+            self.buf_out[:, idx:idx+win] += x*self.wet + self.buf_in*(1-self.wet)
         # Now ready to output hop more samples
         
     def process_audio_offline(self, ytarget):

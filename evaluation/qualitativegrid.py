@@ -5,6 +5,7 @@ import sys
 import os
 import time
 import subprocess
+import pickle
 sys.path.append("../src")
 from particle import *
 from probutils import *
@@ -16,7 +17,7 @@ sr = 44100
 win = 2048
 hop = win//2
 stereo = True
-P = 1000
+P = 10000
 feature_params = dict(
     win=win,
     sr=sr,
@@ -28,9 +29,9 @@ feature_params = dict(
     use_zcs=False,
 )
 particle_params = dict(
-    p=10,
-    pfinal=10,
-    pd=0.95,
+    p=5,
+    pfinal=5,
+    pd=0.9,
     temperature=10,
     L=10,
     P=P,
@@ -40,6 +41,13 @@ particle_params = dict(
     alpha=0.1,
     use_top_particle=False
 )
+
+resultsdir = "Qualitative/Results/P{}_p{}_temp{}_pd{}".format(particle_params["P"], particle_params["p"], particle_params["temperature"], particle_params["pd"])
+if not os.path.exists(resultsdir):
+    print("Making", resultsdir)
+    os.mkdir(resultsdir)
+pickle.dump(particle_params, open("{}/particle_params.pkl".format(resultsdir), "wb"))
+pickle.dump(feature_params, open("{}/feature_params.pkl".format(resultsdir), "wb"))
 
 targets = [
             "2 Voice Harmony/Let It Be - 2 voice cp - filt saw - 2 octaves.wav",
@@ -83,21 +91,21 @@ for corpus in corpora:
         print(corpus, target)
         path = "{}_{}.wav".format(corpus_name, target_name)
         pathmp3 = "{}_{}.mp3".format(corpus_name, target_name)
-        if not os.path.exists("Qualitative/Results/" + pathmp3):
+        if not os.path.exists(resultsdir+os.path.sep+pathmp3):
             pf.reset_state()
             ytarget = load_corpus("Qualitative/Targets/"+target, sr=sr, stereo=stereo)
             tic = time.time()
             pf.process_audio_offline(ytarget)
             generated = pf.get_generated_audio()
             wavfile.write(path, sr, generated)
-            if os.path.exists("Qualitative/Results/"+pathmp3):
-                os.remove("Qualitative/Results/"+pathmp3)
-            cmd = ["ffmpeg", "-i", path, "Qualitative/Results/"+pathmp3]
+            if os.path.exists(resultsdir+os.path.sep+pathmp3):
+                os.remove(resultsdir+os.path.sep+pathmp3)
+            cmd = ["ffmpeg", "-i", path, resultsdir+os.path.sep+pathmp3]
             print(cmd)
             subprocess.call(cmd)
             os.remove(path)
         html += "<td><audio controls><source src=\"{}\" type=\"audio/mp3\"></audio></td>".format(pathmp3)
-        fout = open("Qualitative/Results/index.html", "w")
+        fout = open("{}/index.html".format(resultsdir), "w")
         fout.write(html)
         fout.close()
     html += "</tr>\n"
