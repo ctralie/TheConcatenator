@@ -136,7 +136,8 @@ def load_corpus(path, sr, stereo, amp_normalize=True):
     samples = []
     files = [path]
     if os.path.isdir(path):
-        files = glob.glob(path + "/*")
+        files = glob.glob(path + os.path.sep + "**", recursive=True)
+        files = [f for f in files if os.path.isfile(f)]
     N = 0
     for f in sorted(files):
         try:
