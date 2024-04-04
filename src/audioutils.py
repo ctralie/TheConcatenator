@@ -128,36 +128,30 @@ def load_audio(filename, sr=44100, mono=True):
     sr: int
         The sample rate that was actually used
     """
-    try:
-        # First, try a faster version of loading audio
-        from scipy.io import wavfile
-        import subprocess
-        import os
-        FFMPEG_BINARY = "ffmpeg"
-        # Append a random int to the file in the rare use case that two processes
-        # are running at the same time and loading the same file
-        if filename[-3:].lower() != "wav":
-            wavfilename = "{}_{}.wav".format(filename, np.random.randint(999999999))
-            if os.path.exists(wavfilename):
-                os.remove(wavfilename)
-            ac = "1"
-            if not mono:
-                ac = "2"
-            subprocess.call([FFMPEG_BINARY, "-i", filename, "-ar", "%i"%sr, "-ac", ac, wavfilename], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            _, y = wavfile.read(wavfilename)
+    # First, try a faster version of loading audio
+    from scipy.io import wavfile
+    import subprocess
+    import os
+    FFMPEG_BINARY = "ffmpeg"
+    # Append a random int to the file in the rare use case that two processes
+    # are running at the same time and loading the same file
+    if filename[-3:].lower() != "wav":
+        wavfilename = "{}_{}.wav".format(filename, np.random.randint(999999999))
+        if os.path.exists(wavfilename):
             os.remove(wavfilename)
-        else:
-            _, y = wavfile.read(filename)
-        y = y.T
-        y = y/2.0**15
-        if mono and y.shape[0] > 1:
-            y = y[0, :]
-        return y, sr
-    except:
-        # Otherwise, fall back to librosa
-        warnings.warn("Falling back to librosa for audio reading, which may be slow for long audio files")
-        import librosa
-        return librosa.load(filename, sr=sr, mono=mono)
+        ac = "1"
+        if not mono:
+            ac = "2"
+        subprocess.call([FFMPEG_BINARY, "-i", filename, "-ar", "%i"%sr, "-ac", ac, wavfilename], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        _, y = wavfile.read(wavfilename)
+        os.remove(wavfilename)
+    else:
+        _, y = wavfile.read(filename)
+    y = y.T
+    y = y/2.0**15
+    if mono and y.shape[0] > 1:
+        y = y[0, :]
+    return y, sr
 
 def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
     """
@@ -200,7 +194,7 @@ def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
     try:
         import pyrubberband
         pitch_shift = pyrubberband.pyrb.pitch_shift
-        print("Using rubberband")
+        print("Rubberband is available for pitch shifting")
     except:
         rg = list(range(shift_min, shift_max+1))
         if len(rg) > 1 or rg[0] != 0:
@@ -208,7 +202,10 @@ def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
 
     for f in sorted(files):
         try:
-            x, sr = load_audio(f, sr=sr, mono=not stereo)
+            try:
+                x, sr = librosa.load(f, sr=sr, mono=not stereo)
+            except:
+                x, sr = load_audio(f, sr=sr, mono=not stereo)
             for p in range(shift_min, shift_max+1):
                 if p != 0:
                     print("Pitch shifting", f, "by", p, "halfsteps...")
