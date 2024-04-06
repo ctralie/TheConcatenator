@@ -17,7 +17,7 @@ import numpy as np
 
 DB_MIN = -1000
 
-hann_window = lambda N: 0.5*(1 - np.cos(2*np.pi*np.arange(N)/N))
+hann_window = lambda N: (0.5*(1 - np.cos(2*np.pi*np.arange(N)/N))).astype(np.float32)
 
 def blackman_harris_window(N):
     """
@@ -46,7 +46,7 @@ def tri_window(N):
     ret[h:2*h] = np.linspace(1, 0, h)
     return ret
 
-def get_windowed(x, hop, win, win_fn=hann_window, dc_normalize=True):
+def get_windowed(x, win, win_fn=hann_window, dc_normalize=True):
     """
     Stack sliding windows of audio, multiplied by a window function,
     into the columns of a 2D array
@@ -55,8 +55,6 @@ def get_windowed(x, hop, win, win_fn=hann_window, dc_normalize=True):
         Audio clip of N samples
     win: int
         Window length
-    hop: int
-        Hop length
     win_fn: int -> ndarray(win)
         Window function
     dc_normalize: bool
@@ -69,11 +67,13 @@ def get_windowed(x, hop, win, win_fn=hann_window, dc_normalize=True):
     ndarray(n_windows)
         Power of each window
     """
-    nwin = int(np.ceil((x.size-win)/hop))+1
-    S = np.zeros((win, nwin))
-    for j in range(nwin):
-        xj = x[hop*j:hop*j+win]
-        S[0:xj.size, j] = xj
+    hop = win//2
+    nwin = (x.size-win)//hop+1 # Chop off anything that doesn't fit in an even number of windows
+    S = np.zeros((win, nwin), dtype=np.float32)
+    n_even = x.size//win
+    n_odd = nwin - n_even
+    S[:, 0::2] = x[0:n_even*win].reshape((n_even, win)).T
+    S[:, 1::2] = x[hop:hop+n_odd*win].reshape((n_odd, win)).T
     power = np.sum(S**2, axis=0)/win
     ind = (power == 0)
     power[ind == 1] = 1

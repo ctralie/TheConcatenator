@@ -44,7 +44,7 @@ def get_mel_filterbank(sr, win, mel_bands=40, min_freq=0.0, max_freq=8000):
     binbins = np.floor(((win-1)/float(sr))*binfreqs) #Floor to the nearest bin
     binbins = np.array(binbins, dtype=np.int64)
     # Create mel triangular filterbank
-    melfbank = np.zeros((mel_bands, win//2+1))
+    melfbank = np.zeros((mel_bands, win//2+1), dtype=np.float32)
     for i in range(1, mel_bands+1):
         thisbin = binbins[i]
         lbin = binbins[i-1]
@@ -73,7 +73,7 @@ def get_dct_basis(N, n_dct=20):
     """
     ts = np.arange(1, 2*N, 2)*np.pi/(2.0*N)
     fs = np.arange(1, n_dct)
-    B = np.zeros((n_dct, N))
+    B = np.zeros((n_dct, N), dtype=np.float32)
     B[1::, :] = np.cos(fs[:, None]*ts[None, :])*np.sqrt(2.0/N)
     B[0, :] = 1.0/np.sqrt(N)
     return B

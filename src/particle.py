@@ -154,8 +154,9 @@ class ParticleFilter:
         self.mic_channels = 1
         self.WSound = []
         WPowers = [] # Store the maximum power over all channels
+        print("Getting corpus windows...", flush=True)
         for i in range(n_channels):
-            WSi, WPi = get_windowed(ycorpus[i, :], hop, win, hann_window)
+            WSi, WPi = get_windowed(ycorpus[i, :], win, hann_window)
             self.WSound.append(WSi)
             if i == 0:
                 WPowers = WPi
@@ -167,6 +168,7 @@ class ParticleFilter:
         if self.device != "np":
             import torch
             concatenate = torch.concatenate
+        print("Computing corpus features...", flush=True)
         WCorpus = concatenate(tuple([self.feature_computer(W) for W in self.WSound]), axis=0)
         self.WCorpus = WCorpus
         # Shrink elements that are too small

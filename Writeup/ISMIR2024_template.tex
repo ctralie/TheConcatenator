@@ -83,7 +83,8 @@
 %
 
 \begin{abstract}
-
+    We present ``The Concatenator,'' a real time system for audio-guided concatenative synthesis. Similarly to Driedger et. al's ``musaicing'' (or ``audio mosaicing'') technique, we concatenate a set number of activations within a corpus of audio to re-create the harmonic and percussive aspects of a target audio stream. Unlike Driedger's NMF-based technique, however, we instead use an explicitly Bayesian point of view, where corpus activations are hidden states and the target audio stream is an observation. We use a particle filter to infer the best hidden corpus states in real-time. Our transition model includes a tunable parameter to control the time-continuity of corpus grains, and our observation model allows users to prioritize how quickly the activations shift to match the target. Because the computational complexity of the system is independent of the corpus size, our system scales to corpora that are hours long, which is an important feature in the age of vast audio data collections. Within The Concatenator module itself, composers can vary grain length, fit to target, and pitch shift in real time while reacting to the sounds they hear, enabling them to rapidly iterate ideas. To conclude our work, we evaluate our system with extensive quantitative tests of the effects of parameters, as well as a qualitative evaluation with artistic insights. Based on the quality of the results, we believe the real-time capability unlocks new avenues for musical expression and control, suitable for live performance and modular synthesis integration, which furthermore represents an essential breakthrough in concatenative synthesis technology.
+    
 \end{abstract}
 
 \section{Introduction}
