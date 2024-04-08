@@ -496,7 +496,6 @@ class ParticleFilter:
         diag_len: int
             Number of steps to look back for diagonal promotion
         """
-        from scipy import sparse
         ## Step 1: Aggregate max particles
         PTop = int(self.neff_thresh)
         N = self.WCorpus.shape[1]
@@ -507,24 +506,48 @@ class ParticleFilter:
         states = self.states[idxs, :]
         if self.device != "np":
             states = states.cpu().numpy()
-        ws = ws[idxs, None]*np.ones((1, states.shape[1]))
-        states = states.flatten()
-        ws = ws.flatten()
-        probs = sparse.coo_matrix((ws, (states, np.zeros(states.size))), 
-                                  shape=(N, 1)).toarray().flatten()
+        ws = ws[idxs]
+        probs = {}
+        for w, state in zip(ws, states):
+            for idx in state:
+                if not idx in probs:
+                    probs[idx] = w
+                else:
+                    probs[idx] += w
         
         ## Step 2: Promote states that follow the last state that was chosen
-        promoted_idxs = np.zeros(N, dtype=int)
+        promoted_idxs = set([])
         for dc in range(1, min(diag_len, len(self.chosen_idxs))+1):
             last_state = self.chosen_idxs[-dc]+dc
             last_state = last_state[last_state < N]
-            promoted_idxs[last_state] = 1
-        probs[promoted_idxs > 0] *= diag_fac
+            for idx in last_state:
+                if not idx in promoted_idxs:
+                    if idx in probs:
+                        probs[idx] *= diag_fac
+                    promoted_idxs.add(idx)
 
-        ## Step 3: Zero out last ones to prevent repeated activations
+        ## Step 3: Zero out activations that happened over the last
+        # r steps prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
-            probs[self.chosen_idxs[-dc]] = 0
-        return np.argpartition(-probs, self.pfinal)[0:self.pfinal]
+            for idx in self.chosen_idxs[-dc]:
+                if idx in probs:
+                    probs.pop(idx)
+        
+        ## Step 4: Choose top corpus activations
+        idxs = np.array(list(probs.keys()), dtype=int)
+        res = idxs
+        if res.size <= self.pfinal:
+            if res.size == 0:
+                # If for some strange reason all the weights were 0
+                res = np.random.randint(N, size=(self.pfinal,))
+            else:
+                while res.size < self.pfinal:
+                    res = np.concatenate((res, res))[0:self.pfinal]
+        else:
+            # Common case: Choose top pfinal corpus positions by weight
+            vals = np.array(list(probs.values()))
+            res = idxs[np.argpartition(-vals, self.pfinal)[0:self.pfinal]]
+        return res
     
     def process_window(self, x):
         """
