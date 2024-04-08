@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import sys
 import os
 import glob
@@ -10,50 +9,6 @@ sys.path.append("../src")
 from particle import *
 from probutils import *
 from audioutils import *
-
-
-## Step 1: intialize parameters
-sr = 44100
-win = 2048
-hop = win//2
-stereo = True
-P = 1000
-feature_params = dict(
-    win=win,
-    sr=sr,
-    min_freq=0,
-    max_freq=8000,
-    use_stft=True,
-    use_mel=False,
-    mel_bands=40,
-    use_zcs=False,
-)
-particle_params = dict(
-    p=5,
-    pfinal=5,
-    pd=0.9,
-    temperature=1,
-    L=10,
-    P=P,
-    r=3,
-    neff_thresh=0.1*P,
-    proposal_k=0,
-    alpha=0.1,
-    use_top_particle=False
-)
-
-## Step 2: Initialize corpus
-corpusname = "EdenVIP2"
-ycorpus = load_corpus("../corpus/EdenVIP2", sr, True)
-
-
-### Step 3: Setup targets for this batch
-N = 1000
-files = glob.glob("../target/fma_small/*/*.mp3")
-np.random.seed(len(files))
-files = sorted(files)
-files = [files[idx] for idx in np.random.permutation(len(files))[0:N]]
-files = sorted(files)
 
 
 def do_batch_with_params(pfiles, feature_params, particle_params):
@@ -96,59 +51,108 @@ def do_batch_with_params(pfiles, feature_params, particle_params):
         pickle.dump(res, open(outfilename, "wb"))
 
 
-## Slice 1: Different numbers of particles and proposal distribution
-## Plots: Show Driedger p=0,5,10 against these
-print("Doing slice 1")
-particle_params["pd"] = 0.95
-particle_params["temperature"] = 50
-particle_params["p"] = 5
-particle_params["pfinal"] = 5
-particle_params["use_stft"] = False
-particle_params["use_mel"] = True
-for P in [100, 1000, 10000]:
+## Step 1: intialize parameters
+sr = 44100
+win = 2048
+hop = win//2
+stereo = True
+P = 1000
+feature_params = dict(
+    win=win,
+    sr=sr,
+    min_freq=0,
+    max_freq=8000,
+    use_stft=True,
+    use_mel=False,
+    mel_bands=40,
+    use_zcs=False,
+)
+particle_params = dict(
+    p=5,
+    pfinal=5,
+    pd=0.9,
+    temperature=1,
+    L=10,
+    P=P,
+    r=3,
+    neff_thresh=0.1*P,
+    proposal_k=0,
+    alpha=0.1,
+    use_top_particle=False
+)
+
+
+### Step 2: Setup targets for this batch
+N = 1000
+files = glob.glob("../target/fma_small/*/*.mp3")
+np.random.seed(len(files))
+files = sorted(files)
+files = [files[idx] for idx in np.random.permutation(len(files))[0:N]]
+files = sorted(files)
+
+## Step 3: Initialize corpus
+for experiment in [
+    dict(corpusname="Bees", stereo=True, path="../corpus/Bees_Buzzing.mp3"),
+    dict(corpusname="EdenVIP2", stereo=True, path="../corpus/EdenVIP2"),
+    dict(corpusname="Woodwinds", stereo=False, path="../corpus/UIowa/Woodwinds")
+]:
+    corpusname = experiment["corpusname"]
+    stereo = experiment["stereo"]
+    ycorpus = load_corpus(experiment["path"], sr, stereo)
+
+    ## Slice 1: Different numbers of particles and proposal distribution
+    ## Plots: Show Driedger p=0,5,10 against these
+    print("Doing slice 1")
+    particle_params["pd"] = 0.95
+    particle_params["temperature"] = 10
+    particle_params["p"] = 5
+    particle_params["pfinal"] = 5
+    particle_params["use_stft"] = False
+    particle_params["use_mel"] = False
+    for P in [100, 1000, 10000]:
+        particle_params["P"] = P
+        particle_params["neff_thresh"] = 0.1*P
+        proposal_ks = [0]
+        if P == 100:
+            # Only use proposal distribution in one specific case
+            proposal_ks.append(10) 
+        for proposal_k in proposal_ks:
+            particle_params["proposal_k"] = proposal_k
+            do_batch_with_params(files, feature_params, particle_params)
+    ## Slice 1b: Do one run with p=10 for 1000 particles
+    print("Doing slice 1b")
+    P = 1000
     particle_params["P"] = P
     particle_params["neff_thresh"] = 0.1*P
-    proposal_ks = [0]
-    if P == 100:
-        # Only use proposal distribution in one specific case
-        proposal_ks.append(10) 
-    for proposal_k in proposal_ks:
-        particle_params["proposal_k"] = proposal_k
+    particle_params["proposal_k"] = 0
+    particle_params["p"] = 10
+    particle_params["pfinal"] = 10
+    do_batch_with_params(files, feature_params, particle_params)
+
+
+    ## Slice 2: A range of pd
+    print("Doing slice 2")
+    particle_params["temperature"] = 10
+    particle_params["p"] = 5
+    particle_params["pfinal"] = 5
+    P = 1000
+    particle_params["P"] = P
+    particle_params["neff_thresh"] = 0.1*P
+    particle_params["proposal_k"] = 0
+    for pd in [0.9, 0.95, 0.99, 0.5]:
+        particle_params["pd"] = pd
         do_batch_with_params(files, feature_params, particle_params)
-## Slice 1b: Do one run with p=10 for 1000 particles
-print("Doing slice 1b")
-P = 1000
-particle_params["P"] = P
-particle_params["neff_thresh"] = 0.1*P
-particle_params["proposal_k"] = 0
-particle_params["p"] = 10
-particle_params["pfinal"] = 10
-do_batch_with_params(files, feature_params, particle_params)
 
 
-## Slice 2: A range of pd
-print("Doing slice 2")
-particle_params["temperature"] = 10
-particle_params["p"] = 5
-particle_params["pfinal"] = 5
-P = 1000
-particle_params["P"] = P
-particle_params["neff_thresh"] = 0.1*P
-particle_params["proposal_k"] = 0
-for pd in [0.9, 0.95, 0.99, 0.5]:
-    particle_params["pd"] = pd
-    do_batch_with_params(files, feature_params, particle_params)
-
-
-## Slice 3: A range of temperature
-print("Doing slice 3")
-particle_params["pd"] = 0.9
-particle_params["p"] = 5
-particle_params["pfinal"] = 5
-P = 1000
-particle_params["P"] = P
-particle_params["neff_thresh"] = 0.1*P
-particle_params["proposal_k"] = 0
-for temperature in [1, 10, 50, 100]:
-    particle_params["temperature"] = temperature
-    do_batch_with_params(files, feature_params, particle_params)
+    ## Slice 3: A range of temperature
+    print("Doing slice 3")
+    particle_params["pd"] = 0.95
+    particle_params["p"] = 5
+    particle_params["pfinal"] = 5
+    P = 1000
+    particle_params["P"] = P
+    particle_params["neff_thresh"] = 0.1*P
+    particle_params["proposal_k"] = 0
+    for temperature in [1, 10, 50]:
+        particle_params["temperature"] = temperature
+        do_batch_with_params(files, feature_params, particle_params)

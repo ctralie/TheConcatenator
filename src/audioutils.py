@@ -46,7 +46,7 @@ def tri_window(N):
     ret[h:2*h] = np.linspace(1, 0, h)
     return ret
 
-def get_windowed(x, win, win_fn=hann_window, dc_normalize=True):
+def get_windowed(x, win, win_fn=hann_window):
     """
     Stack sliding windows of audio, multiplied by a window function,
     into the columns of a 2D array
@@ -57,8 +57,6 @@ def get_windowed(x, win, win_fn=hann_window, dc_normalize=True):
         Window length
     win_fn: int -> ndarray(win)
         Window function
-    dc_normalize: bool
-        If True, normalize the windows to sum to 0 after windowing
 
     Returns
     -------
@@ -80,8 +78,6 @@ def get_windowed(x, win, win_fn=hann_window, dc_normalize=True):
     power = 10*np.log10(power)
     power[ind == 1] = DB_MIN
     S = S*win_fn(win)[:, None]
-    if dc_normalize:
-        S -= np.mean(S, axis=0, keepdims=True)
     return S, power
 
 def do_windowed_sum(WSound, H, win, hop):
@@ -153,7 +149,7 @@ def load_audio(filename, sr=44100, mono=True):
         y = y[0, :]
     return y, sr
 
-def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
+def load_corpus(path, sr, stereo, dc_normalize=True, amp_normalize=True, shift_min=0, shift_max=0):
     """
     Load a corpus of audio
 
@@ -165,6 +161,8 @@ def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
         Sample rate to use
     stereo: bool
         If true, load stereo.  If false, load mono
+    dc_normalize: bool
+        If True, do a DC-offset normalization on each clip
     amp_normalize: bool
         If True (default), normalize the audio sample range to be in [-1, 1]
     shift_min: int
@@ -211,16 +209,20 @@ def load_corpus(path, sr, stereo, amp_normalize=True, shift_min=0, shift_max=0):
                     print("Pitch shifting", f, "by", p, "halfsteps...")
                     xs = pitch_shift(x, sr=sr, n_steps=p)
                     x = np.concatenate((x, xs), axis=0)
-            if amp_normalize:
-                norm = np.max(np.abs(x))
-                if norm > 0:
-                    x = x/norm
             if stereo and len(x.shape) == 1:
                 x = np.array([x, x])
             if stereo:
                 N += x.shape[1]
+                if dc_normalize:
+                    x -= np.mean(x, axis=1, keepdims=True)
             else:
                 N += x.size
+                if dc_normalize:
+                    x -= np.mean(x)
+            if amp_normalize:
+                norm = np.max(np.abs(x))
+                if norm > 0:
+                    x = x/norm
             print("Finished {}, length {}".format(f, N/sr))
             samples.append(x)
         except:

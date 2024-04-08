@@ -24,14 +24,19 @@ min_freq = 0
 max_freq = 8000
 kmin = max(0, int(win*min_freq/sr)+1)
 kmax = min(int(win*max_freq/sr)+1, win//2)
-stereo = True
+
 
 ## Step 2: Initialize corpus
+#corpusname = "Bees"
+#ycorpus = load_corpus("../corpus/Bees_Buzzing.mp3", sr, True)
+#stereo = True
+
 corpusname = "EdenVIP2"
 ycorpus = load_corpus("../corpus/EdenVIP2", sr, True)
-#ycorpus = load_corpus("../corpus/theoshift.mp3", sr, True)
-WSoundL, _ = get_windowed(ycorpus[0, :], hop, win)
-WSoundR, _ = get_windowed(ycorpus[1, :], hop, win)
+stereo = True
+
+WSoundL, _ = get_windowed(ycorpus[0, :], win)
+WSoundR, _ = get_windowed(ycorpus[1, :], win)
 WL = np.abs(np.fft.fft(WSoundL, axis=0)[kmin:kmax, :])
 WR = np.abs(np.fft.fft(WSoundR, axis=0)[kmin:kmax, :])
 W = np.concatenate((WL, WR), axis=0)
@@ -62,8 +67,8 @@ for target, outfilename in zip(files, outfilenames):
     print("Doing", outfilename)
     res = {}
     ytarget = load_corpus(target, sr=sr, stereo=stereo)
-    W1L, _ = get_windowed(ytarget[0, :], hop, win)
-    W1R, _ = get_windowed(ytarget[1, :], hop, win)
+    W1L, _ = get_windowed(ytarget[0, :], win)
+    W1R, _ = get_windowed(ytarget[1, :], win)
     VL = np.abs(np.fft.fft(W1L, axis=0)[kmin:kmax, :])
     VR = np.abs(np.fft.fft(W1R, axis=0)[kmin:kmax, :])
     V = np.concatenate((VL, VR), axis=0)
