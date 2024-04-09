@@ -16,8 +16,16 @@ Introductory points:
 * Be sure to mention that we do stereo at 44100hz
 * Note that we use a smaller L than driedger
 
+--------------------------------------------------------------------
 Finished
 --------
 * Cite patch match and explain the connection to
 * Summarize Driedger technique
 * Be precise about the complexity of Driedger and the complexity of this algorithm
+
+
+
+--------------------------------------------------------------------
+Questions for Ben:
+* How is the block diagram?
+* Do we have adequate citations for concatenative synthesis algorithms?
