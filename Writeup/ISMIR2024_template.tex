@@ -240,10 +240,10 @@ where, with a slight abuse of notation, $\alpha$ is a binary mask that is $1$ if
 
 \begin{equation}
     \label{eq:sparseklhgrad}
-    \vec{h_i}^{\ell}[k]  \gets \vec{h_i}^{\ell-1} \left(  \frac{\sum_n (W_{n, \vec{s_i}[k]}) (\vec{v_t}[n]) / (\vec{\Lambda_i}^{\ell-1}[n]) }{ (\sum_{n} W_{n, \vec{s_i}[k]}) + \alpha[k] \vec{h_i}^{\ell-1}}[k] \right)
+    \vec{h_i}^{\ell}[k]  \gets \vec{h_i}^{\ell-1} \left(  \frac{\sum_n (W_{n, \vec{s_i}[k]}) (\vec{v_t}[n]) / (\vec{\Lambda_i}^{\ell-1}[n]) }{ (\sum_{n} W_{n, \vec{s_i}[k]}) + \boldsymbol{ \alpha[k] \vec{h_i}^{\ell-1}}[k]} \right)
 \end{equation}
 
-Intuitively, if $s_i[k]$ is an activation that's very quiet, $\alpha[k]$ will be a 1, which will contribute an extra term to the demininator that shrinks $\vec{h_i}^{\ell-1}$ down (for a derivation of similar additive constraints on NMF, refer to \cite{virtanen2007monaural}).
+Intuitively, if $s_i[k]$ is an activation that's very quiet, $\alpha[k]$ will be a 1, which will contribute an extra term to the demininator that shrinks $\vec{h_i}^{\ell-1}$ down (for a derivation of similar additive constraints on NMF, refer to \cite{virtanen2007monaural}).  We use $\alpha=0.1$ in practice.
 
 
 \textbf{Mel Spectrograms.} The computational complexity scales linearly with $P$, so lowering $P$ makes the system run faster, but it is also possible to decrease $M$ without sacrificing much quality.  One can replace the full spectrogram with a mel-spaced spectrogram with many fewer bins.  In fact, Schwarz's Caterpillar system did something very similar, suggesting alternative features to the raw spectrogram such as spectral flux \cite{schwarz2000system}.  We assess the impact of such a choice on pitch resolution in Section~\ref{sec:quantitativepitch}.
@@ -274,7 +274,7 @@ This probability is small; it's about 0.058, 0.077, 0.095 for $k = 1, 2, 3$, res
 
 For example, for $p_d = 0.95$, $\delta=2$ (about 46 milliseconds of deviation) and $w = 11$, the probabilities are 0.803, 0.95, 0.987 for $k=1, 2, 3$, respectively.  These probabilities all degrade when $N$ gets larger for a larger corpus, but in that case, it is likely that the acceptable $w$ is also larger.
 
-We also note that once one of the particles catches on to a good activation, it is promoted with a high weight and gets carried on with {\em time-continuous activations}.  This is similar to how the ``patch match'' technique in computer graphics \cite{Barnes:2009:PAR, Barnes:2010:TGP} computes nearest neighbors of many nearby patches by starting with a random initializations of nearest neighbors.  Similarly, in that case, chances are that at least one of the patches will be matched to a correct neighbor, and {\em spatially adjacent} patches correct their nearest neighbors to to neighbors at the corresponding offsets \cite{Barnes:2009:PAR}.
+We also note that once one of the particles catches on to a good activation, it is promoted with a high weight and gets carried on with {\em time-continuous activations}.  This is similar to how the ``patch match'' technique in computer graphics \cite{Barnes:2009:PAR, Barnes:2010:TGP} computes nearest neighbors of many nearby patches by starting with a random initializations of nearest neighbors, and then well-matching patches correct the nearest neighbors of {\em spatially adjacent} patches \cite{Barnes:2009:PAR}.
 
 \subsection{Diagonal Enhancement}
 
@@ -309,6 +309,13 @@ To assess RQ1, we fix $p_d=0.95$, temperature=10, $r=3$, and $p=5$, and we take 
 
 \subsection{Pitch Tracking}
 \label{sec:quantitativepitch}
+
+%\begin{figure}
+%    \centering
+%    \includegraphics[width=0.7\textwidth]{figs/PitchEstimates.png}
+%    \caption{Pitch estimates}
+%    \label{fig:pitchestimates}
+%\end{figure}
 
 
 \subsection{Qualitative Evaluation}
