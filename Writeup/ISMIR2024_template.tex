@@ -89,16 +89,17 @@
 
 \section{Introduction}
 
-Concatenative Synthesis, or Audio Mosaicing, is a data-driven approach towards arranging granular fragments of audio samples, particularly using data sourced from the spectral-temporal features of a target sound. While granular synthesis systems typically rely on combinations of aleatoric parameterization, deterministic automation, and traditional synthesis modulation to achieve complex and evolving textures from sound fragments, Concatenative Synthesis algorithms utilize Music Information Retrieval technology to decide parameters such as the index, amplitude, and pitch of each sound fragment. As data storage and processing capabilities expand each year, new methods for harnessing the power of MIR are becoming available for music makers, along with previously unimaginable new avenues for creative expression in sound design and composition. 
+Concatenative synthesis, or audio mosaicing, is a data-driven approach to arrange granular fragments of audio samples, particularly using data sourced from the spectral-temporal features of a target sound. While granular synthesis systems typically rely on combinations of aleatoric parameterization, deterministic automation, and traditional synthesis modulation to achieve complex and evolving textures from sound fragments, concatenative synthesis algorithms utilize Music Information Retrieval technology to decide parameters such as the index, amplitude, and pitch of each sound fragment. As data storage and processing capabilities expand each year, new methods for harnessing the power of MIR are becoming available for music makers, along with previously unimaginable new avenues for creative expression in sound design and composition. 
 
 Modern music producers are inundated by audio data. Services like Splice offer hundreds of thousands of samples readily available on the cloud, and Kontakt multi-sample libraries can often take up over 10gb of disk space to capture a single instrument. Music Producers generate plenty of their own audio data as well: stems, multi-tracks, long-form recordings, and mix variations account for a large portion of many a music producer's audio collection. Recent software such as XO by XLN Audio, Sononym, and Ableton Live 12 offer automatic organization of audio files based on various tags and descriptors, but these implementations of MIR technology are more utilitarian than creative in their design and application. Meanwhile, concatenative synthesis options remain sparse since its conceptual inception \cite{schwarz2000system}: Reformer by Krotos is designed to create foley designs, apps like Samplebrain and CataRT \cite{schwarz2006real, schwarz2008principles} are lacking in critical musical areas such as pitch tracking, with the more advanced options having limited accessibility for artists, requiring prior knowledge of Max (FluCoMa, MuBu) or Python (Audioguide).
 
 The Concatenator aims to represent a breakthrough in concatenative synthesis technology that satisfies three major areas of advancement: 1) The system is capable of accurate harmonic and percussive reproductions from arbitrary corpora 2) in real-time, 3) affording new levels of control and accessibility for users. The speed, ease, and scope of The Concatenator should allow for the creation of audio mosaics will contribute to the ongoing research and innovation in this field. We also hope that this project offers a fresh paradigm for music producers to interact creatively with their ever-expanding excess of audio data. 
 
 \section{Related Work}
-This work builds on a long history of work in Bayesian inference and particle filters, concatenative synthesis, and applied nonnegative matrix factorization (NMF).
+\label{sec:relatedwork}
+This work stands on the shoulders of giants in Bayesian inference, particle filters, concatenative synthesis, and applied nonnegative matrix factorization (NMF).
 
-From an artistic point of view, the most similar technique to ours is Driedger et al.'s 2015 ``Let It Bee'' concatenative musaicing technique \cite{driedger2015let}, which uses NMF to learn activations of spectral templates in a \textbf{corpus collection} so that their combination will match a \textbf{target} spectrogram. This technique represented a fruitful innovation in sound design for electronic music production, as featured heavily on Zero Point by Rob Clouth\cite{clouth2020}, using custom software also authored by Clouth. The algorithm was also implemented in an open source python script in 2018 \cite{tralie2018}, and in Max by the FluCoMa project in 2021 (fluid.bufnmfcross)\cite{flucoma2021}, which made NMF-inspired audio mosaicing accessible enough to contribute towards the production of at least two more albums heavily featuring the technique: Edenic Mosaics by Encanti (2021) \cite{cantil2021} and Hate Devours Its Host by Valance Drakes (2023) \cite{drakes2023}.
+From an artistic point of view, the most similar technique to ours is Driedger et al.'s 2015 ``Let It Bee'' concatenative musaicing technique \cite{driedger2015let}, which uses NMF to learn activations of spectral templates in a \textbf{corpus collection} so that their combination will match a \textbf{target} spectrogram. This technique was a fruitful innovation in sound design for electronic music production, as featured heavily on Zero Point by Rob Clouth\cite{clouth2020}, using custom software also authored by Clouth. The algorithm was also implemented in an open source python script in 2018 \cite{tralie2018}, and in Max by the FluCoMa project in 2021 (fluid.bufnmfcross)\cite{flucoma2021}, which made NMF-inspired audio mosaicing accessible enough to contribute towards the production of at least two more albums heavily featuring the technique: Edenic Mosaics by Encanti (2021) \cite{cantil2021} and Hate Devours Its Host by Valance Drakes (2023) \cite{drakes2023}.
 
 
 We now detail some of the mathematics of Driedger et al.'s technique, as we borrow a few ideas in our work.  Driedger et al. learn $H$ in the equation $V \approx WH$, where $V$ is an $M \times T$ target spectrogram with $M$ frequency bins and $T$ times, $W$ is an $M \times N$ set of $N$ spectral corpus templates that are treated as fixed, and $H$ is a matrix of $N \times T$ learned activations.  For instance, $W$ could be the windows of a collection of buzzing bees and $V$ could be an excerpt from The Beatles' ``Let It Be'' (hence the title).  Driedger et al. use the Kullback-Liebler (KL) divergence loss, an instance of the more general $\beta$-divergence \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem}, to measure the goodness of fit of $WH$ to $V$.  This loss function is 
@@ -146,14 +147,14 @@ Caterpillar and audio analogies are both {\em sequentially Bayesian in nature}, 
 
 \section{The Concatenator}
 
-\subsection{Bayesian Formulation}
+\subsection{Sequential Bayesian Formulation}
 \label{sec:bayesian}
 
     The NMF technique of Driedger is not suitable for realtime applications, both because the gradient update rules of Equation~\ref{eq:klhgrad} scale quadratically in the length of the corpus, leaving all but minutes long corpora usable (Section~\ref{sec:complexity}), but also because the equations to promote repeated activations and time-continuous at each entry of $H$ require knowledge of all activations in $H$, including future activations.  We instead turn to a sequential Bayesian formulation, viewing the target spectrogram (or some derived feature) $V$ as the observation, where the $t^{\text{th}}$ column of $V$ is an observation at time $t$.  The hidden states are the activations of the $N$ templates in the corpus spectrogram $W$ at each time.  We then use a particle filter to efficiently infer the hidden activations (Section~\ref{sec:sampling}).
     
     Henceforth, we will refer to the observations, or columns of $V$ at time $t$ as vectors $\vec{v}_t$ to emphasize that the data is streaming, and we focus on one timestep $t$ at a time.  
     
-    \textbf{State space.} To keep our state space simple, we decouple which activations are active from their weights; we only model the former as our hidden state, while we infer the weights as a best fit under the KL-loss (Equation~\ref{eq:klloss}).  To control for polyphany directly, we use a {\em $p$-sparse} nonnegative integer-valued vector $\vec{s}_t \in \mathbb{Z}+^p$ as our hidden state.  This vector indexes the $p$ templates that are active at time $t$, where $p$ is fixed ahead of time.  For convenience of implementation, we allow repetitions of template indices, and the indices are in no particular order\footnote{One could also model $\vec{s}_t$ as an unordered set without repetition, which would identify all $\vec{s}_t$'s that are permutations of each other.  This would reduce the cardinality of the state space to $\binom{N}{k}$ at the cost of a more cumbersome implementation.  We also rely on some redundancy of good state samples in our particle filter, so the redundancy of our simpler scheme does not hurt us.};
+    \textbf{State space.} To keep the state space simple, we decouple which activations are active from their weights; we only model the former as the hidden state, while we infer the weights as a best fit under the KL-loss (Equation~\ref{eq:klloss}).  To control for polyphany directly, we use a {\em $p$-sparse} nonnegative integer-valued vector $\vec{s}_t \in \mathbb{Z}^{+p}$ as the hidden state.  This vector indexes the $p$ corpus elements that are active at time $t$, where $p$ is fixed ahead of time.  For convenience of implementation, we allow repetitions of template indices, and the indices are in no particular order\footnote{One could also model $\vec{s}_t$ as a \textbf{set} of $p$ elements, which would identify all $\vec{s}_t$'s that are permutations of each other.  This would reduce the cardinality of the state space to $\binom{N}{k}$ at the cost of a more cumbersome implementation.  We also rely on some redundancy sampling good activations in our particle filter, so allowing repetitions does not hurt performance.}:
 
     \begin{equation} 
         \label{eq:statevector}
@@ -187,21 +188,21 @@ Caterpillar and audio analogies are both {\em sequentially Bayesian in nature}, 
 
 
 
-\subsection{Sampling  And Synthesizing}
+\subsection{Sampling, Observing, And Synthesizing}
 \label{sec:sampling}
 
-We now describe how to apply Bayesian inference to find the sequence of activations $s_t$ and their weights $h_t$ that maximize the posterior probability given the transition model in Equation~\ref{eq:transitionprob} and the observation model, which we detail below.  We note that the authors of \cite{wohlmayr2010probabilistic}, who use a similar FHMM applied to multi-pitch tracking, infer the hidden states via message passing algorithms known as ``Max-Sum'' \cite{kschischang2001factor} and ``Junction Tree'' \cite{jensen1996introduction} algorithms.  However, we need a faster technique which is also realtime, and which has tunable accuracy that degrades gracefully with restricted computational resources.  To that end, we turn to a particle filter.
+We now describe how to apply Bayesian inference to find the sequence of activations $\vec{s_t}$ and their weights $\vec{h_t}$ that maximize the posterior probability given the transition model in Equation~\ref{eq:transitionprob} and the observation model described below.  While the authors of \cite{wohlmayr2010probabilistic} use a similar FHMM applied to multi-pitch tracking, inferring the hidden states via message passing algorithms known as ``Max-Sum'' \cite{kschischang2001factor} and ``Junction Tree'' \cite{jensen1996introduction} algorithms, we need a faster technique which is also realtime, and which has tunable accuracy that degrades gracefully with restricted computational resources.  To that end, we turn to a particle filter.
 
-Our particle filter consists of $P$ particles, each of which is a $p$-dimensional state vector (Equation~\ref{eq:statevector}) which we refer to as $\vec{s_i}$.  The particles move around the state space over time, and they each have associated weights $w_i$ that keep track of the posterior probability of that accumulated motion over all timesteps (we now dispense with the time index $t$ on $\vec{s_i}$ and $w_i$ since $t$ will be clear from context).  Since each particle is its own estimate of a state that best describes what templates to choose, our goal is to sample them in such a way that (at least some of) the particles are close to representing the state representing the maximum posterior probability given all $\vec{v_t}$.
+Our particle filter consists of $P$ particles, each of which is a $p$-dimensional state vector (Equation~\ref{eq:statevector}) which we refer to as $\vec{s_i}$.  The particles move around the state space over time, and they each have associated weights $w_i$ that keep track of the posterior probability of that accumulated motion over all timesteps (we now dispense with the time index $t$ on $\vec{s_i}$ and $w_i$ since $t$ will be clear from context).  Since each particle is its own estimate of a state that best describes what templates to choose, our goal is to sample them in such a way that (at least some of) the particles are close to capturing the state that maximizes the posterior probability given all $\vec{v_t}$.
 
-\textbf{Tracking Weights.} The particles all start out with even weights $w_i = 1/P$.  At the beginning of each time step, we sample new indices for each $\vec{s_i}$ according to Equation~\ref{eq:transitionprob}.  Then, we multiply each weight by the \textbf{observation probability}, which is based on the KL loss $d_i$ between $\Lambda_i$ and $\vec{v}_t$ (Equation~\ref{eq:approximation}) after $L$ iterations of Equation~\ref{eq:sparseklhgrad}, and that of the other particles, as follows:
+\textbf{Tracking Weights.} All particles begin with even weights $w_i = 1/P$.  At the beginning of each time step, we sample new indices for each $\vec{s_i}$ according to Equation~\ref{eq:transitionprob}.  Then, we multiply each weight by the \textbf{observation probability $p_O$}.  Given the KL loss $d_i$ between the $i^{\text{th}}$ particle's spectral approximation $\vec{\Lambda_i}$ (Equation~\ref{eq:approximation}) and $\vec{v}_t$ after $L$ iterations of Equation~\ref{eq:sparseklhgrad}, for each particle $i$, $p_O$ is:
 
 \begin{equation}
     \label{eq:observationprob}
     p_O[i] = \frac{e^{-\tau d_i}}{ \sum_{j} e^{-\tau d_j}}
 \end{equation}
 
-In other words, it is a softmax based on goodness of fit to $\vec{v_t}$ with a ``temperature'' $\tau$, but using negative exponential since a larger $d_i$ loss indicates a poorer fit and hence, should indicate a lower probability.  Intuitively, a higher $\tau$ will emphasize more particles that better fit the observation, putting more importance on the observation relative than the transition probability.  This is tunable and has a similar effect to varying $p_d$ in the transition, as we will explore more in Section~\ref{sec:quantitativeevaluation}.  After multiplying each $w_i$ by $p_O[i]$, we normalize the weights so that they sum to 1.  
+In other words, the observation probability is a softmax over KL-based goodness of fits of $s_i$ to $\vec{v_t}$, and the softmax has a ``temperature'' $\tau$.  We use a negative exponential since a larger $d_i$ loss indicates a poorer fit using activations $\vec{s_i}$ and hence, should be a lower probability.  Intuitively, a higher $\tau$ will emphasize particles that fit the observation better, putting more importance on the observation relative than the transition probability.  This is tunable and has a similar effect to varying $p_d$ in the transition, as we will explore more in Section~\ref{sec:quantitativeevaluation}.  After multiplying each $w_i$ by $p_O[i]$, we normalize the weights so that they sum to 1.  
 %If the sum of the weights is too numerically small based on the chosen floating point precision, we reset each weight to be $1/N$.
 
 \textbf{Resampling.} The above is a naive particle filter, but it suffers from ``sample impoverishment,'' where a few particles stand out with high weights and the rest are stuck with vanishing weights, leaving the system unable to adapt to new observations.  To ameliorate this, we compute a stanard definition of the ``effective number of particles $n_{\text{eff}}$'':
@@ -211,7 +212,7 @@ In other words, it is a softmax based on goodness of fit to $\vec{v_t}$ with a `
 \end{equation}
 
 
-which is maximized when all particles have equal weight $1/P$.  If $n_{\text{eff}}$ goes below $0.1P$ at a particular time step, we resample the particles with stochastic universal sampling or ``systematic resampling'' \cite{kitagawa1996monte, carpenter1999improved}, an $O(P)$ resampling technique, and reset all of the weights to $1/N$ before continuing.  This leads to ``survival of the fittest'' where particles with a higher weight are more likely to be replicated and those with a lower weight are more likely to be eliminated.
+which is maximized when all particles have equal weight $1/P$.  If $n_{\text{eff}}$ goes below $0.1P$ at a particular time step, we resample the particles with stochastic universal sampling \cite{kitagawa1996monte, carpenter1999improved}, an $O(P)$ resampling technique, and reset all of the weights to $1/N$ before continuing.  This leads to ``survival of the fittest'' where particles with a higher weight are more likely to be replicated and those with a lower weight are more likely to be eliminated.
 
 \textbf{Synthesizing audio.} At this point, we are ready to synthesize the audio for this timestep. \ChrisEdit{Explain aggregation with time-enhancement and avoiding repeated activations, windowing and overlap adding}
 
@@ -220,7 +221,7 @@ which is maximized when all particles have equal weight $1/P$.  If $n_{\text{eff
 % WH: (MxNxT), other coefficients: (NxNxT)
 \subsection{Computational Complexity} 
 \label{sec:complexity}
-The dominant cost of both our algorithm and the algorithm of Driedger et. al. are the activation updates via KL iterations.  Given $N$ corpus templates, $T$ times in the target, and a spectral dimension of $M$, for $L$ KL iterations, the time complexity of Driedger (Equation~\ref{eq:klhgrad}) is $O(L(N^2T + MNT))$.  This is a {\em quadratic} dependency on the corpus length.  So if, for example, Driedger's technique takes a minute on a target sourcing a corpus that's a minute long, it will take 100 minutes with a 10 minute corpus or 10 days with a 2 hour corpus on that target!  To improve this scaling, the authors of \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} do a greedy nearest neighbors search in the corpus, but this requires tuning and may miss important activations.  In fact, our random sampling naturally scales in an even more favorable way.  Specifically, given $P$ particles and $p$ activations per particle, the time complexity of our analagous Equation~\ref{eq:sparseklhgrad} is only $O(LP(p^2T + MpT))$, which does not scale with the corpus size $N$ {\em at all} (though $P$ may need to scale with $N$ for good results (Section~\ref{sec:quantitativeevaluation}).  Even relatively small corpora benefit; for 5 minute corpus a window length of 2048 ($M=1024$, hop=$1024$) at a sample rate of 44100, using $P=1000$ and $p=10$, this is a speedup of nearly 20x over Driedger.  We note also that propagating particles and applying the observation model are also embarrassingly parallelizable at the particle level, and regardless, our algorithm can stream the results real time.
+The dominant cost of both our algorithm and the algorithm of Driedger et. al. are the activation updates via KL iterations.  Given $N$ corpus templates, $T$ times in the target, and a spectral dimension of $M$, for $L$ KL iterations, the time complexity of Driedger (Equation~\ref{eq:klhgrad}) is $O(L(N^2T + MNT))$.  This is a {\em quadratic} dependency on the corpus length.  So if, for example, Driedger's technique takes a minute on a target sourcing a corpus that's a minute long, it will take 100 minutes with a 10 minute corpus or 10 days with a 2 hour corpus on that target!  To improve this scaling, the authors of \cite{buch2017nichtnegativematrixfaktorisierungnutzendesklangsynthesensystem} do a greedy nearest neighbors search in the corpus, but this requires tuning and may miss important activations.  In fact, our random sampling naturally scales in an even more favorable way.  Specifically, given $P$ particles and $p$ activations per particle, the time complexity of our analagous Equation~\ref{eq:sparseklhgrad} is only $O(LP(p^2T + MpT))$, which does not scale with the corpus size $N$ {\em at all} (though $P$ may need to scale with $N$ for good results (Section~\ref{sec:quantitativeevaluation}).  Even relatively small corpora benefit; for 5 minute corpus a window length of 2048 ($M=1024$, hop=$1024$) at a sample rate of 44100, using $P=1000$ and $p=10$, this is a speedup of nearly 20x over Driedger.  Moreover, propagating particles and applying the observation model are also embarrassingly parallelizable at the particle level, and regardless, our algorithm can stream the results real time.  Finally, we use $L=10$, while Driedger et. al use $L=20$ \cite{driedger2015let} (and we actually use $L=50$ for Driedger in Section~\ref{sec:quantitativeevaluation}).
 
 
 \subsection{Bells And Whistles (Pun Intended)}
@@ -229,17 +230,17 @@ We now describe some enhancements to the algorithm.
 
 
 
-\textbf{Regularizing Quiet Moments in The Corpus.} One pitfall of using KL-fit for a small number of activations is that if enough of them are near silence, Equation~\ref{eq:sparseklhgrad} becomes numerically unstable and the activations can approach $\infty$.  To address this, we modify the KL-loss to include a masked $L_2$ penalty to the activations $\vec{h_i}$ that give rise to the estimate $\vec{\Lambda_i}$ (Equation~\ref{eq:approximation}) for the $i^{\text{th}}$ particle for the target $\vec{v_t}$ at time $t$:
+\textbf{Regularizing Quiet Moments in The Corpus.} One pitfall of using KL-fit for a small number of activations is that if enough of them are near silence, Equation~\ref{eq:sparseklhgrad} becomes numerically unstable and the activations can approach $\infty$.  To address this, we modify the KL-loss to include a masked $L_2$ penalty to the activations $\vec{h_i}$ that give rise to the approximation $\vec{\Lambda_i}$ (Equation~\ref{eq:approximation}) for the $i^{\text{th}}$ particle for the target $\vec{v_t}$ at time $t$:
 
 \begin{equation}
-    \label{eq:klloss}
-    D(\vec{v_t} || \vec{\Lambda_i}) = \sum \vec{v_t} \odot \log \left( \frac{\vec{v_t}}{\vec{\Lambda_i}} \right) - \vec{v_t} + \vec{\Lambda_i} + \frac{1}{2} ||\alpha \odot \vec{h_i}||_2^2
+    \label{eq:kllossalpha}
+    D(\vec{v_t} || \vec{\Lambda_i}) = \left( \sum \vec{v_t} \odot \log \left( \frac{\vec{v_t}}{\vec{\Lambda_i}} \right) - \vec{v_t} + \vec{\Lambda_i} \right) + \boldsymbol{ \frac{1}{2} ||\alpha \odot \vec{h_i}||_2^2 }
     \end{equation}
 
-where, with a slight abuse of notation, $\alpha$ is a binary mask that is $1$ if the corresponding corpus activation is less than 50dB and $0$ otherwise.  The update rules of Equation~\ref{eq:sparseklhgrad} then turn into 
+where, with a slight abuse of notation, $\alpha$ is a binary mask that is $1$ if the corresponding corpus activation is less than -50dB and $0$ otherwise.  The update rules of Equation~\ref{eq:sparseklhgrad} then turn into 
 
 \begin{equation}
-    \label{eq:sparseklhgrad}
+    \label{eq:sparseklhgradalpha}
     \vec{h_i}^{\ell}[k]  \gets \vec{h_i}^{\ell-1} \left(  \frac{\sum_n (W_{n, \vec{s_i}[k]}) (\vec{v_t}[n]) / (\vec{\Lambda_i}^{\ell-1}[n]) }{ (\sum_{n} W_{n, \vec{s_i}[k]}) + \boldsymbol{ \alpha[k] \vec{h_i}^{\ell-1}}[k]} \right)
 \end{equation}
 
@@ -249,9 +250,9 @@ Intuitively, if $s_i[k]$ is an activation that's very quiet, $\alpha[k]$ will be
 \textbf{Mel Spectrograms.} The computational complexity scales linearly with $P$, so lowering $P$ makes the system run faster, but it is also possible to decrease $M$ without sacrificing much quality.  One can replace the full spectrogram with a mel-spaced spectrogram with many fewer bins.  In fact, Schwarz's Caterpillar system did something very similar, suggesting alternative features to the raw spectrogram such as spectral flux \cite{schwarz2000system}.  We assess the impact of such a choice on pitch resolution in Section~\ref{sec:quantitativepitch}.
 
 
-\textbf{Pitch Shifting.} By default, we use the same approach as Driedger et. al to increase the pitch coverage of the corpus; that is, we replicate the corpus in its entirety for different pitch shifts that are chosen up-front.  This only incurs a preprocessing cost since the complexity of The Concatenator is independent of corpus length (Section~\ref{sec:complexity}), which helps guarantee real-time performance once the system starts.  We note, however, that our system could choose different tradeoff of space and time complexity by augmenting the state space to include a pitch shift for each activation, and by computing pitch shifts on the corpus audio {\em on demand} whenever a particular activation is chosen with a nonzero pitch shift.  Such is the advantage of a real time setup that decouples observation fit from corpus audio.
+\textbf{Pitch Shifting.} By default, we use the same approach as Driedger et. al to increase the pitch coverage of the corpus; that is, we replicate the corpus in its entirety for different pitch shifts that are chosen up-front.  This only incurs a preprocessing cost since the complexity of The Concatenator is independent of corpus length (Section~\ref{sec:complexity}), which helps guarantee real-time performance once the system starts.  We note, however, that our system could choose a different tradeoff of space and time complexity by augmenting the state space as the cartesian product of activation indices and pitch shifts, and then computing pitch shifts on the corpus audio {\em on demand} whenever a nonzero pitch shift is chosen.  Such is the advantage of a real time setup that decouples observation fit from corpus audio.
 
-Even for a fixed corpus with or without pitch shifts, the user can control a slider that pitch shifts the target in real time, so that the chosen activations move relative to the audio input to the system.  This could be used, for example, to have The Concatenator harmonize to singing in an interval that's a fifth away.
+Finally, for a fixed corpus with or without pitch shifts, the user can control a slider that pitch shifts the target in real time, so that the chosen activations move relative to the audio input to the system.  This could be used, for example, to have The Concatenator harmonize to singing in an interval that's a fifth away.
 
 \section{Practical Considerations}
 
@@ -297,18 +298,29 @@ To empirically validate the reliability of our system, now do an extensive MIR-s
 
 First, to complement our analysis in Section~\ref{sec:activationprob}, we want to empirically examine how many particles are needed for different sized corpora.  We also want guarantee the impact of important parameters in our system for artistic control.  Our first two research questions are, respectively:
 
-\begin{itemize}
-    \item \textbf{RQ1}: How do the number of particles affect the KL fit to target on corpora of varying sizes?
-    \item \textbf{RQ2}: How much of an impact do $p_d$ and temperature have on average grain length?
-\end{itemize}
+\textbf{RQ1}: How do the number of particles affect the KL fit to target on corpora of varying sizes?
 
-To address RQ1 and RQ2, we select 3 corpora: Driedger's buzzing bees (small, 66 seconds), a corpus used in ``Edenic Mosaics''\cite{cantil2021} known as ``EdenVIP2,'' which consists of various real-world percussive sounds (medium, ~10.5 minutes), and all of the woodwinds from the pre-2012 UIowa MIS dataset \cite{uiowadataset} (large, ~1.6 hours).  We then randomly subsample 1000 30 second clips from the Free Music Archive (FMA)-small dataset \cite{fma_dataset}, each of which we use as a target for the three different corpora for various parameter choices.
+\textbf{RQ2}: How much of an impact do $p_d$ and temperature have on average grain length?
 
-To assess RQ1, we fix $p_d=0.95$, temperature=10, $r=3$, and $p=5$, and we take $P \in \left\{ 100, 1000, 10000 \right\}$.  We also compare to Driedger et. al's technique with $c=3$ and $r=3$.  In all cases, we use frequencies from $0-8000$hz using a sample rate of 44100hz, a window length of 2048 samples, and a hop length of 1024 samples.  Since the spectral similarity of different targets to a particular corpus varies widely, we report the {\em ratio} of the KL loss in Equation~\ref{eq:klloss} to 
+To address RQ1 and RQ2, we select 3 corpora: Driedger's buzzing bees (small, 66 seconds), a corpus used in ``Edenic Mosaics''\cite{cantil2021} known as ``EdenVIP2,'' which consists of various real-world percussive sounds (medium, ~10.5 minutes), and all of the woodwinds from the pre-2012 UIowa MIS dataset \cite{uiowadataset} (large, ~1.6 hours).  We then randomly subsample 1000 30 second clips from the Free Music Archive (FMA)-small dataset \cite{fma_dataset}, each of which we use as a target for the three different corpora for various parameter choices.  We use a sample rate of 44100hz for all corpora, we use stereo audio for the bees and EdenVIP2, and we use mono audio for the woodwinds.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{figs/FMAFit.pdf}
+    \caption{Ratios of KL fits of FMA examples of various different configurations to The Concatenator with $P=100, p=5$.  Increasing polyphony leads to a better fit (ratios further below 1), and increasing particles leads to a better fit for larger corpora.}
+    \label{fig:fmafit}
+\end{figure}
+
+To assess RQ1, we fix $p_d=0.95$, temperature=10, and $r=3$, using $L=10$ iterations for all KL operations, and we take $P \in \left\{ 100, 1000, 10000 \right\}$.  We also compare to Driedger et. al's technique with $c=3$ and $r=3$ using $L=50$ iterations.  In all cases, we use frequencies from $0$ to $8000$hz using a sample rate of 44100hz, a window length of 2048 samples, and a hop length of 1024 samples.  Since the spectral similarity of different targets to a particular corpus varies widely, we report the {\em ratio} of the KL loss in Equation~\ref{eq:klloss} to the KL loss for The Concatenator with $P=100, p=5$.  Figure~\ref{fig:fmafit} shows the results.  As expected, an increased polyphony leads to a better fit, as does increasing particles for all but the Bees, though the effect of increased particles is most pronounced for the largest corpus of Woodwinds.
+
+As we noted in Section~\ref{sec:relatedwork}, however, a very good fit may lose the timbral characteristics of the corpus.  This is mitigated by a low $p$, but we also need to ensure that grains are long enough.  Therefore, we also examine mean grain length for various parameters to address RQ2
 
 
 \subsection{Pitch Tracking}
 \label{sec:quantitativepitch}
+
+\textbf{RQ3:} How well does The Concatenator reproduce target pitch?
+
 
 %\begin{figure}
 %    \centering
@@ -321,6 +333,14 @@ To assess RQ1, we fix $p_d=0.95$, temperature=10, $r=3$, and $p=5$, and we take 
 \subsection{Qualitative Evaluation}
 
 Talk about Ben's ``obstacle course''
+
+\subsection{Discussion}
+
+Randomness is an asset
+
+The obstacle course doesn't necessarily tell us where the model can go
+
+We also believe the formulation of this particle filter opens up other approaches to MIR such as real time multipitch tracking, structure analysis of large scale audio, and sample detection.
 
 % For bibtex users:
 \bibliography{ISMIRtemplate}
