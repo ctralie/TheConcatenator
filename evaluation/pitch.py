@@ -18,8 +18,8 @@ import torch
 import torchcrepe
 
 # For crepe
-fmin = 32.7
-fmax = 1250
+fmin = 50
+fmax = 1000
 batch_size = 4096
 hop_crepe = 1024
 
@@ -96,7 +96,7 @@ for mel in [False, True]:
             ytarget = load_corpus(f, sr=sr, stereo=stereo)
 
             ## Step 2: Compute CREPE on raw audio
-            if P == 100:
+            if P == 100 and mel == False:
                 pitch = torchcrepe.predict(torch.from_numpy(ytarget.flatten()).view((1, ytarget.size)),sr,hop_crepe, fmin, fmax,'full',batch_size=batch_size,device="cuda").cpu().numpy().flatten()
                 pickle.dump(pitch, open("{}_raw.pkl".format(prefix), "wb"))
 

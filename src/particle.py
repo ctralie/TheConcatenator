@@ -80,8 +80,8 @@ class ParticleFilter:
                 Number of bands to use if using mel-spaced STFT
             use_mel: bool
                 If True, use mel-spaced STFT
-            use_chroma: bool
-                If True, use chroma features
+            use_yin: bool
+                If True, use yin features
             use_zcs: bool
                 If True, use zero crossings
         }

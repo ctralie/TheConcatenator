@@ -39,6 +39,7 @@ if __name__ == '__main__':
     parser.add_argument('--maxFreq', type=int, default=8000, help="Maximum frequency to use (in hz), if using spectrogram bins directly")
     parser.add_argument('--useSTFT', type=int, default=1, help="If 1, use ordinary STFT bins")
     parser.add_argument('--useMel', type=int, default=0, help="If 1, use mel-spaced bins")
+    parser.add_argument('--useYin', type=int, default=0, help="If 1, use Yin features")
     parser.add_argument('--useZCS', type=int, default=0, help="If 1, use zero-crossings in each window as a feature")
     parser.add_argument('--melBands', type=int, default=40, help="Number of mel bands to use")
     parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
@@ -88,6 +89,7 @@ if __name__ == '__main__':
         max_freq=opt.maxFreq,
         use_stft=opt.useSTFT == 1,
         use_mel=opt.useMel == 1,
+        use_yin=opt.useYin == 1,
         use_zcs=opt.useZCS == 1,
         mel_bands=opt.melBands
     )

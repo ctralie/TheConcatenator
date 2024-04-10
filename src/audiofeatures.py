@@ -15,6 +15,42 @@ The licensor cannot revoke these freedoms as long as you follow the license term
 
 import numpy as np
 
+def get_yin(F):
+    """
+    Compute the normalized yin on windowed audio
+
+    Parameters
+    ----------
+    F: ndarray(win_length, n_win)
+        Windowed audio
+    
+    Returns
+    -------
+    ndarray(win_length, n_win)
+        Normalized yin
+    """
+    win_length = F.shape[0]
+    hop = win_length//2
+
+    ## Step 1: Do autocorrelation
+    a = np.fft.rfft(F, axis=0)
+    acf = np.fft.irfft(a*np.conj(a), axis=0)[0:hop, :]
+    ## Step 2: Compute windowed energy
+    energy = np.cumsum(F**2, axis=0)
+    energy = energy[hop::, :] - energy[0:-hop, :]
+
+    ## Step 3: Yin and normalized yin
+    yin = energy[0, :] + energy - 2*acf
+    yin -= np.min(yin, axis=0, keepdims=True)
+    denom = np.cumsum(yin[1::, :], axis=0)
+    denom[denom<1e-6] = 1
+    nyin = np.ones(yin.shape)
+    nyin[1::, :] = yin[1::, :]*np.arange(1, yin.shape[0])[:, None]/denom
+
+    ret = nyin[0:hop//2, :]
+    ret[ret < 0] = 0
+    return ret
+
 def get_mel_filterbank(sr, win, mel_bands=40, min_freq=0.0, max_freq=8000):
     """
     Return a mel-spaced triangular filterbank
@@ -79,7 +115,7 @@ def get_dct_basis(N, n_dct=20):
     return B
 
 class AudioFeatureComputer:
-    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_chroma=False, use_zcs=False, device="cpu"):
+    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_yin=False, use_zcs=False, device="cpu"):
         """
         Parameters
         ----------
@@ -97,8 +133,8 @@ class AudioFeatureComputer:
             Number of bands to use if using mel-spaced STFT
         use_mel: bool
             If True, use mel-spaced STFT
-        use_chroma: bool
-            If True, use chroma features
+        use_yin: bool
+            If True, use yin features
         use_zcs: bool
             If True, use zero crossings
         device: str
@@ -110,17 +146,12 @@ class AudioFeatureComputer:
         self.kmax = min(int(win*max_freq/sr)+1, win//2)
         self.use_stft = use_stft
         self.use_mel = use_mel
-        self.use_chroma = use_chroma
+        self.use_yin = use_yin
         self.use_zcs = use_zcs
         self.device = device
 
-        if use_stft:
-            if use_mel:
-                print("Warning: Using both STFT and Mel-spacing simultaneously.  Did you mean this?")
-            if use_chroma:
-                print("Warning: Using both STFT and Chroma simultaneously.  Did you mean this?")
-            if use_zcs:
-                print("Warning: Using both STFT and zero crossings simultaneously.  Did you mean this?")
+        if use_stft and use_mel:
+            print("Warning: Using both STFT and Mel-spacing simultaneously.  Did you mean this?")
 
         if self.use_mel:
             self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
@@ -147,6 +178,8 @@ class AudioFeatureComputer:
             components.append(S[self.kmin:self.kmax, :])
         if self.use_mel:
             components.append(self.M.dot(S))
+        if self.use_yin:
+            components.append(get_yin(x))
         if self.use_zcs:
             Z = np.sign(x)
             Z = np.sum(np.abs(Z[0:-1, :]-Z[1:, :]), axis=0, keepdims=True)
