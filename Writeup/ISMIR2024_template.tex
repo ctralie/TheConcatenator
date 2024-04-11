@@ -321,7 +321,15 @@ To assess RQ1, we fix $p_d=0.95$, temperature=10, and $r=3$, using $L=10$ iterat
     \label{fig:pdGrainLengths}
 \end{figure}
 
-As we noted in Section~\ref{sec:relatedwork}, however, a very good fit may lose the timbral characteristics of the corpus.  This is mitigated by a low $p$, but we also need to ensure that grains are long enough.  Therefore, we also examine mean grain length for various parameters to address RQ2.  Figure~\ref{fig:pdGrainLengths} shows the result of varying $p_d$ for a fixed temperature of 10 and $p=5$.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{figs/tempGrainLengths.pdf}
+    \caption{Average grain lengths of 1000 random clips from the FMA dataset, varying temperature $\tau$.  Increasing $\tau$ {\em decreases} the average grain length since this prioritizes the observation probability over the transition probability.}
+    \label{fig:tempGrainLengths}
+\end{figure}
+
+As we noted in Section~\ref{sec:relatedwork}, however, a very good fit may lose the timbral characteristics of the corpus.  This is mitigated by a low $p$, but we also need to ensure that grains are long enough.  Therefore, we also examine mean grain length for various parameters to address RQ2.  Figure~\ref{fig:pdGrainLengths} shows the result of varying $p_d$ for a fixed temperature $\tau=10$ and $p=5$, and Figure~\ref{fig:tempGrainLengths} shows the result of varying the temperature $\tau$ for $p=5$ and $p_d = 0.95$.  As expected, grain length goes up with an increase $p_d$ and down with an increase in $\tau$.  In practice, lowering $\tau$ and raising $p_d$ will lead to especially long grain lengths, while possibly losing an acceptable fit to the target.
 
 
 \subsection{Pitch Tracking}
