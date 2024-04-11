@@ -130,7 +130,7 @@ def load_audio(filename, sr=44100, mono=True):
     import os
     FFMPEG_BINARY = "ffmpeg"
     # Append a random int to the file in the rare use case that two processes
-    # are running at the same time and loading the same file
+    # are running at the same time and loading the same file (rare case)
     if filename[-3:].lower() != "wav":
         wavfilename = "{}_{}.wav".format(filename, np.random.randint(999999999))
         if os.path.exists(wavfilename):

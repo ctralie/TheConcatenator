@@ -52,7 +52,7 @@ N = rgb.shape[0]
 P = 50
 
 fac = 0.65
-plt.figure(figsize=(fac*30, fac*5))
+plt.figure(figsize=(fac*30*4/5, fac*5))
 
 seed = 1
 
@@ -77,15 +77,16 @@ diff = states2 - states
 
 
 colspan = 5
-sdim = (2, 5*colspan)
+sdim = (3, 4*colspan)
 
 ## Step 1: Plot initial states
-plt.subplot2grid(sdim, (0, 0), rowspan=2, colspan=colspan)
+plt.subplot2grid(sdim, (0, 0), rowspan=3, colspan=colspan)
 plot_states(states, w, rgb)
 draw_color_key(rgb)
+plt.title("Beginning of Timestep")
 
 ## Step 2: Plot states after transitions
-plt.subplot2grid(sdim, (0, 1*colspan), rowspan=2, colspan=colspan)
+plt.subplot2grid(sdim, (0, 1*colspan), rowspan=3, colspan=colspan)
 plot_states(states, w, rgb, alpha=0.1)
 plot_states(states2, w, rgb)
 hl = 0.7 # Head length
@@ -99,10 +100,10 @@ for i in range(states.shape[0]):
 draw_color_key(rgb)
 plt.yticks([])
 plt.ylabel("")
-plt.title("1. Apply Transition Model")
+plt.title("1. Apply Transition Model ($p_d$)")
 
 ## Step 3: Plot states after observation probabilities
-plt.subplot2grid(sdim, (0, 2*colspan), rowspan=2, colspan=colspan)
+plt.subplot2grid(sdim, (0, 2*colspan), rowspan=3, colspan=colspan)
 idx = np.zeros_like(w)
 promote = [6, 7]
 for j in range(2):
@@ -118,10 +119,10 @@ plot_states(states2, w2, rgb)
 draw_color_key(rgb)
 plt.yticks([])
 plt.ylabel("")
-plt.title("2. Apply Observation")
+plt.title("2. Apply Observation Weights ($\\tau$)")
 
 ## Step 4a: Show aggregated weights
-plt.subplot2grid(sdim, (0, 3*colspan), rowspan=1, colspan=colspan)
+plt.subplot2grid(sdim, (2, 3*colspan), rowspan=1, colspan=colspan)
 agg = np.zeros(N)
 for i in idx:
     agg[states2[i]] += w2[i]
@@ -178,21 +179,20 @@ all_audio[-hop:] *= winfn[-hop:]
 sidx = all_audio.size-win+hop
 
 waveform_lw = 1
-plt.subplot2grid(sdim, (0, 4*colspan), rowspan=1, colspan=colspan)
+plt.subplot2grid(sdim, (0, 3*colspan), rowspan=1, colspan=colspan)
 plt.plot(all_audio, c='k', linewidth=waveform_lw)
 plt.plot(np.arange(win)+wlen-hop, z, c=alpha*rgb[idx[0], :]+beta*rgb[idx[1], :])
 plt.plot([sidx, sidx], [-1, 1], c='k', linestyle='--')
 plt.plot([sidx+hop, sidx+hop], [-1, 1], c='k', linestyle='--')
 plt.plot([sidx, sidx+hop], [-1, -1], c='k', linestyle='--')
 plt.plot([sidx, sidx+hop], [1, 1], c='k', linestyle='--')
-plt.title("4. Window And Mix")
+plt.title("3c. Window And Mix")
 
 plt.axis("off")
-plt.subplot2grid(sdim, (1, 4*colspan), rowspan=1, colspan=colspan//2)
+plt.subplot2grid(sdim, (1, 3*colspan), rowspan=1, colspan=colspan//2)
 all_audio = np.concatenate((all_audio, np.zeros(hop)))
 all_audio[-win:] += z
 plt.plot(all_audio[sidx:sidx+hop], c='k', linewidth=waveform_lw)
 plt.axis("off")
-
 
 plt.savefig("BlockDgm.svg", bbox_inches='tight')
