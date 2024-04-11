@@ -42,6 +42,57 @@ def get_activations_diff(H, p):
         diff.append(p-same)
     return np.array(diff)
 
+def get_col_sets(row, col):
+    """
+    Parameters
+    ----------
+    row: ndarray(N)
+        Row indices of nonzero activations
+    col: ndarray(N)
+        Column indices of nonzero activations
+    
+    Returns
+    -------
+    list of set
+        Set of row indices for each column
+    """
+    cols = {}
+    for i, j in zip(row, col):
+        if not j in cols:
+            cols[j] = set([i])
+        else:
+            cols[j].add(i)
+    return cols
+
+def get_activations_diff_sparse(row, col, p):
+    """
+    Compute the number of activations that differ between
+    adjacent time frames, given a sparse representation of
+    a matrix of activations
+
+    Parameters
+    ----------
+    row: ndarray(N)
+        Row indices of nonzero activations
+    col: ndarray(N)
+        Column indices of nonzero activations
+    p: int
+        Number of activations per timestep
+    
+    Returns
+    -------
+    ndarray(T-1)
+        Number of activations that are different at each timestep (at most p)
+    """
+    cols = get_col_sets(row, col)
+    N = np.max(col)+1
+    diff = p*np.ones(N-1)
+    for j in range(N-1):
+        if j in cols and j+1 in cols:
+            s1 = set([x+1 for x in cols[j]])
+            diff[j] = p - len(s1.intersection(cols[j+1]))
+    return diff
+
 def get_repeated_activation_itervals(H, p):
     """
     Compute the distances from each activation to its first repetition
@@ -100,6 +151,34 @@ def get_diag_lengths(H, p):
             while k < H.shape[1] and idx+(k-j) in idxs[k]:
                 k += 1
             diags.append(k-j)
+    return np.array(diags, dtype=int)
+
+def get_diag_lengths_sparse(row, col):
+    """
+    Compute the lengths of all diagonals
+
+    Parameters
+    ----------
+    row: ndarray(N)
+        Row indices of nonzero activations
+    col: ndarray(N)
+        Column indices of nonzero activations
+    
+    Returns
+    -------
+    ndarray(<= p*T)
+        The lengths of each diagonal
+    """
+    cols = get_col_sets(row, col)
+    diags = []
+    N = len(cols)
+    for j in range(N):
+        if j in cols:
+            for idx in cols[j]:
+                k = j+1
+                while k < N and k in cols and idx+(k-j) in cols[k]:
+                    k += 1
+                diags.append(k-j)
     return np.array(diags, dtype=int)
 
 def count_top_activations(states, top_idxs):

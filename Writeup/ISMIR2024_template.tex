@@ -307,13 +307,21 @@ To address RQ1 and RQ2, we select 3 corpora: Driedger's buzzing bees (small, 66 
 \begin{figure}
     \centering
     \includegraphics[width=\columnwidth]{figs/FMAFit.pdf}
-    \caption{Ratios of KL fits of FMA examples of various different configurations to The Concatenator with $P=100, p=5$.  Increasing polyphony leads to a better fit (ratios further below 1), and increasing particles leads to a better fit for larger corpora.}
+    \caption{Ratios of KL fits of FMA examples of various different configurations to The Concatenator with $P=100, p=5$.  Increasing polyphony leads to a better fit (ratios further below 1), and increasing particles leads to a better fit for larger corpora like the 1.6 hours of Woodwinds.}
     \label{fig:fmafit}
 \end{figure}
 
-To assess RQ1, we fix $p_d=0.95$, temperature=10, and $r=3$, using $L=10$ iterations for all KL operations, and we take $P \in \left\{ 100, 1000, 10000 \right\}$.  We also compare to Driedger et. al's technique with $c=3$ and $r=3$ using $L=50$ iterations.  In all cases, we use frequencies from $0$ to $8000$hz using a sample rate of 44100hz, a window length of 2048 samples, and a hop length of 1024 samples.  Since the spectral similarity of different targets to a particular corpus varies widely, we report the {\em ratio} of the KL loss in Equation~\ref{eq:klloss} to the KL loss for The Concatenator with $P=100, p=5$.  Figure~\ref{fig:fmafit} shows the results.  As expected, an increased polyphony leads to a better fit, as does increasing particles for all but the Bees, though the effect of increased particles is most pronounced for the largest corpus of Woodwinds.
+To assess RQ1, we fix $p_d=0.95$, temperature=10, and $r=3$, using $L=10$ iterations for all KL operations, and we take $P \in \left\{ 100, 1000, 10000 \right\}$.  We also compare to Driedger et. al's technique with $c=3$ and $r=3$ using $L=50$ iterations.  In all cases, we use frequencies from $0$ to $8000$hz using a sample rate of 44100hz, a window length of 2048 samples, and a hop length of 1024 samples.  Since the spectral similarity of different targets to a particular corpus varies widely, we report the {\em ratio} of the KL loss in Equation~\ref{eq:klloss} to the KL loss for The Concatenator with $P=100, p=5$.  Figure~\ref{fig:fmafit} shows the results.  As expected, an increased polyphony leads to a better fit, as does increasing particles for all but the Bees, though the effect of increased particles is most pronounced for the largest corpus of Woodwinds, which makes sense by Equation~\ref{eq:timeadjacentprobmodified}.
 
-As we noted in Section~\ref{sec:relatedwork}, however, a very good fit may lose the timbral characteristics of the corpus.  This is mitigated by a low $p$, but we also need to ensure that grains are long enough.  Therefore, we also examine mean grain length for various parameters to address RQ2
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{figs/pdGrainLengths.pdf}
+    \caption{Average grain lengths of 1000 random clips from the FMA dataset, varying $p_d$.  Increasing $p_d$ increases the average grain length since activations are less likely to randomly jump at each timestep.}
+    \label{fig:pdGrainLengths}
+\end{figure}
+
+As we noted in Section~\ref{sec:relatedwork}, however, a very good fit may lose the timbral characteristics of the corpus.  This is mitigated by a low $p$, but we also need to ensure that grains are long enough.  Therefore, we also examine mean grain length for various parameters to address RQ2.  Figure~\ref{fig:pdGrainLengths} shows the result of varying $p_d$ for a fixed temperature of 10 and $p=5$.
 
 
 \subsection{Pitch Tracking}
