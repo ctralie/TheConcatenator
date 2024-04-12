@@ -197,18 +197,19 @@ def load_corpus(path, sr, stereo, dc_normalize=True, amp_normalize=True, shift_m
         rg = list(range(shift_min, shift_max+1))
         if len(rg) > 1 or rg[0] != 0:
             print("Warning: pyrubberband not found.  Using simpler phase vocoder for pitch shifting")
-
+            
     for f in sorted(files):
         try:
             try:
                 x, sr = librosa.load(f, sr=sr, mono=not stereo)
             except:
                 x, sr = load_audio(f, sr=sr, mono=not stereo)
+            x_orig = x
             for p in range(shift_min, shift_max+1):
                 if p != 0:
                     print("Pitch shifting", f, "by", p, "halfsteps...")
-                    xs = pitch_shift(x, sr=sr, n_steps=p)
-                    x = np.concatenate((x, xs), axis=0)
+                    xs = pitch_shift(x_orig, sr=sr, n_steps=p)
+                    x = np.concatenate((x, xs), axis=1)
             if stereo and len(x.shape) == 1:
                 x = np.array([x, x])
             if stereo:

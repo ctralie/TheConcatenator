@@ -149,7 +149,7 @@ class AudioFeatureComputer:
         self.use_yin = use_yin
         self.use_zcs = use_zcs
         self.device = device
-
+        
         if use_stft and use_mel:
             print("Warning: Using both STFT and Mel-spacing simultaneously.  Did you mean this?")
 
