@@ -59,6 +59,12 @@ targets = [
             "Ripple Continuum/Ripple Contiuum - filt saw - 3 octaves.wav",
             "Ripple Continuum/Ripple Contiuum Piano Solo.wav",
             "Ripple Continuum/Ripple Contiuum - sine - 3 octaves.wav",
+            "Bass Test.wav",
+            "Beatbox Test.wav",
+            "Drums Bass Test.wav",
+            "Pink Noise Sweet Test.wav",
+            "Skrillex - Scary Monsters and Nice Sprites.m4a",
+            "Vocal Test.wav",
             "Beatles_LetItBe.mp3"
            ]
 
@@ -68,12 +74,13 @@ corpora = [
     "Bjork It's Oh So Quiet.m4a",
     "Skrillex - Scary Monsters and Nice Sprites.m4a",
     "Foley FX",
-    "Tonal",
     "Vocals",
     "Percussive",
     "Pink Floyd - The Wall",
     "Skrillex - Quest For Fire",
-    "Mr. Bill - Spectra Sample Pack Excerpt"
+    "Mr. Bill - Spectra Sample Pack Excerpt",
+    "Edenic Mosaics LIB Compare",
+    "Woodwinds"
 ]
 
 ## Step 2: Initialize corpus

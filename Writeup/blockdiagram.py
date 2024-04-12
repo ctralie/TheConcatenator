@@ -113,7 +113,7 @@ print(np.max(idx))
 w2 = np.array(w)
 w2 *= (0.25 + 2*idx)
 print("Num upweighted", np.sum(idx > 0))
-idx = np.argsort(-w2)[0:3]
+idx = np.argsort(-w2)[0:5]
 plt.scatter(states2[idx, 0], states2[idx, 1], s=1000, facecolor='none', edgecolor='k', linestyle='--')
 plot_states(states2, w2, rgb)
 draw_color_key(rgb)
@@ -131,11 +131,11 @@ for i, a in enumerate(agg):
     r = Rectangle((i, 0), 1, a+2, facecolor=rgb[i, :])
     ax.add_patch(r)
 idx = np.argsort(-agg)[0:2]
-plt.scatter(idx+0.5, agg[idx], c='k', marker='x', s=100)
+plt.scatter(idx+0.5, agg[idx], c='k', marker='x', s=80)
 plt.xlim([0, agg.size])
 plt.ylim([0, np.max(agg)+10])
 plt.axis("off")
-plt.title("3a. Aggregate weights + Vote")
+plt.title("3a. Aggregate Top 0.1P Particles")
 
 
 ## Step 4b: Show activations and audio added together
