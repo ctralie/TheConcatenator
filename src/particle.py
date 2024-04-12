@@ -17,7 +17,7 @@ The licensor cannot revoke these freedoms as long as you follow the license term
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KDTree
-from probutils import stochastic_universal_sample, do_KL, do_KL_torch, get_activations_diff, get_repeated_activation_itervals, get_diag_lengths
+from probutils import stochastic_universal_sample, do_KL, do_KL_torch, get_activations_diff_sparse, get_diag_lengths_sparse
 from observer import Observer
 from propagator import Propagator
 from audioutils import get_windowed, hann_window
@@ -345,10 +345,15 @@ class ParticleFilter:
         self.tk_root.destroy()
         self.recording_finished = True
     
-    def get_H(self):
+    def get_H(self, sparse=False):
         """
         Convert chosen_idxs and H into a numpy array with 
         activations in the proper indices
+
+        Parameters
+        ----------
+        sparse: bool
+            If True, return the sparse matrix directly
 
         Returns
         -------
@@ -363,7 +368,9 @@ class ParticleFilter:
         rows = np.array(self.chosen_idxs, dtype=int).flatten()
         cols = np.array(np.ones((1, self.pfinal))*np.arange(T)[:, None], dtype=int).flatten()
         H = sparse.coo_matrix((vals, (rows, cols)), shape=(N, T))
-        return H.toarray()
+        if not sparse:
+            H = H.toarray()
+        return H
     
     def get_generated_audio(self):
         """
@@ -670,32 +677,21 @@ class ParticleFilter:
         Plot statistics about the activations that were chosen
         """
         p = self.states.shape[1]
-        H = self.get_H()
+        H = self.get_H(sparse=True)
 
-        active_diffs = get_activations_diff(H, p)
-        repeated_intervals = get_repeated_activation_itervals(H, p)
+        active_diffs = get_activations_diff_sparse(H.row, H.col, p)
         
-        plt.subplot(231)
-        active_diffs = np.cumsum(active_diffs)
-        avgwin = 10
-        active_diffs = (active_diffs[avgwin::] - active_diffs[0:-avgwin])/avgwin
+        plt.subplot2grid((2, 3), (0, 0), colspan=2)
         t = np.arange(active_diffs.size)*self.win/(self.sr*2)
-        plt.plot(t, active_diffs)
+        plt.plot(t, active_diffs, linewidth=0.5)
         plt.legend(["Particle Filter: Mean {:.3f}".format(np.mean(active_diffs))])
         plt.title("Activation Changes over Time, p={}, proposal_k={}".format(self.p, self.proposal_k))
         plt.xlabel("Time (Seconds)")
 
-        plt.subplot(232)
+        plt.subplot(233)
         plt.hist(active_diffs, bins=np.arange(30))
         plt.title("Activation Changes Histogram")
         plt.xlabel("Number of Activations Changed")
-        plt.ylabel("Counts")
-        plt.legend(["Ground Truth", "Particle Filter"])
-
-        plt.subplot(233)
-        plt.hist(repeated_intervals, bins=np.arange(30))
-        plt.title("Repeated Activations Histogram, r={}".format(self.r))
-        plt.xlabel("Repeated Activation Distance")
         plt.ylabel("Counts")
         plt.legend(["Ground Truth", "Particle Filter"])
 
@@ -710,7 +706,7 @@ class ParticleFilter:
         plt.title("Neff (P={}, Median {:.2f}, Reampled {}x)".format(self.P, np.median(self.neff), self.num_resample))
 
         plt.subplot(236)
-        diags = get_diag_lengths(H, p)
+        diags = get_diag_lengths_sparse(H.row, H.col)
         plt.hist(diags, bins=np.arange(30))
         plt.legend(["Particle Filter Mean: {:.3f} ($p_d$={})".format(np.mean(diags), self.pd)])
         plt.xlabel("Diagonal Length")
