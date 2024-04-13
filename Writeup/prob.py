@@ -11,5 +11,5 @@ delta = 2
 w = 11
 
 for k in range(1, 5):
-    prob = 1-(pd + (1-pd)*(N-2-w*k)/N)**((2*delta+1)*p*P)
+    prob = 1-(pd + (1-pd)*(N-1-w*k)/(N-1))**((2*delta+1)*p*P)
     print(k, prob)
