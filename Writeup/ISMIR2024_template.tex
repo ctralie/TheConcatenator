@@ -20,7 +20,7 @@
 
 
 \usepackage{lineno}
-\linenumbers
+%\linenumbers
 
 \graphicspath{{../Figures/}}
 
@@ -41,8 +41,8 @@
 % Two addresses
 % --------------
 \twoauthors
-  {First author} {School \\ Department}
-  {Second author} {Company \\ Address}
+  {Christopher J. Tralie} {Ursinus College \\ Mathematics And Computer Science}
+  {Ben Cantil} {DataMind Audio}
 
 % Three addresses
 % --------------\input{ISMIR2021_paper.tex}
@@ -192,7 +192,7 @@ The NMF technique of Driedger is not suitable for real-time applications; the gr
 \subsection{Sampling, Observing, And Synthesizing}
 \label{sec:sampling}
 
-We now describe how to apply Bayesian inference to find the sequence of activations $\vec{s_t}$ and their weights $\vec{h_t}$ that maximize the posterior probability given the transition model in Equation~\ref{eq:transitionprob} and the observation model described below.  While the authors of \cite{wohlmayr2010probabilistic} use a similar FHMM applied to multi-pitch tracking, inferring the hidden states via message passing algorithms known as ``Max-Sum'' \cite{kschischang2001factor} and ``Junction Tree'' \cite{jensen1996introduction} algorithms, we need a faster technique which is also real-time, and which has tunable accuracy that degrades gracefully with restricted computational resources.  To that end, we turn to a particle filter.
+We now describe how to apply Bayesian inference to find the sequence of activations $\vec{s_t}$ and their weights $\vec{h_t}$ that maximize the posterior probability given the transition model in Equation~\ref{eq:transitionprob} and the observation model described below.  While the authors of \cite{wohlmayr2010probabilistic} use a similar FHMM applied to multi-pitch tracking, inferring the hidden states via message passing algorithms known as ``Max-Sum'' \cite{kschischang2001factor} and ``Junction Tree'' \cite{jensen1996introduction}, we need a faster technique which is also real-time, and which has tunable accuracy that degrades gracefully with restricted computational resources.  To that end, we turn to a particle filter.
 
 Our particle filter consists of $P$ particles, each of which is a $p$-dimensional state vector (Equation~\ref{eq:statevector}) that we refer to as $\vec{s_i}$.  The particles traverse the corpus over time, and they each have a weight $w_i$ that keeps track of the posterior probability of its accumulated motion over all timesteps (we now dispense with the time index $t$ on $\vec{s_i}$ and $w_i$ since $t$ will be clear from context).  Since each particle is its own estimate of a state that best describes what templates to choose, our goal is to sample them in such a way that (at least some of) the particles are close to capturing activations that maximize the posterior probability given all $\vec{v_t}$.
 
@@ -227,14 +227,14 @@ The dominant cost of both The Concatenator and of Driedger is the activation upd
     D(\vec{v_t} || \vec{\Lambda_i}) = \left( \sum \vec{v_t} \odot \log \left( \frac{\vec{v_t}}{\vec{\Lambda_i}} \right) - \vec{v_t} + \vec{\Lambda_i} \right) + \boldsymbol{ \frac{||\alpha \odot \vec{h_i}||_2^2 }{2} }
     \end{equation}
 
-where, with a slight abuse of notation, $\alpha$ is a binary mask that is $1$ if the corresponding corpus activation is less than -50dB and $0$ otherwise.  Equation~\ref{eq:sparseklhgrad} then turns into 
+where, abusing notation, $\alpha$ is a mask that is a fixed value (we use 0.1) if the corresponding corpus window is less than -50dB and $0$ otherwise.  Equation~\ref{eq:sparseklhgrad} then turns into 
 
 \begin{equation}
     \label{eq:sparseklhgradalpha}
-    \vec{h_i}^{\ell}[k]  \gets \vec{h_i}^{\ell-1}[k] \left(  \frac{\sum_m (W_{m, \vec{s_i}[k]}) (\vec{v_t}[m]) / (\vec{\Lambda_i}^{\ell-1}[m]) }{ (\sum_{m} W_{m, \vec{s_i}[k]}) + \boldsymbol{ \alpha[k] \vec{h_i}^{\ell-1}}[k]} \right)
+    \vec{h_i}^{\ell}[k]  \gets \vec{h_i}^{\ell-1}[k] \left(  \frac{\sum_m (W_{m, \vec{s_i}[k]}) (\vec{v_t}[m]) / (\vec{\Lambda_i}^{\ell-1}[m]) }{ (\sum_{m} W_{m, \vec{s_i}[k]}) + \boldsymbol{ \alpha[k] \vec{h_i}^{\ell-1}[k]}} \right)
 \end{equation}
 
-Intuitively, if $s_i[k]$ is a quiet corpus element, $\alpha[k]$ will be a 1, which will shrinks $\vec{h_i}^{\ell-1}$ down\footnote{For a derivation of similar additive constraints on NMF, refer to \cite{virtanen2007monaural}}.  We use $\alpha=0.1$.
+Intuitively, if $s_i[k]$ is a quiet corpus element, $\alpha[k] = 0.1$, which shrinks $\vec{h_i}^{\ell-1}[k]$ down\footnote{For a derivation of similar additive constraints on NMF, refer to \cite{virtanen2007monaural}}.
 
 
 % \textbf{Mel Spectrograms.} The computational complexity scales linearly with $P$, so lowering $P$ makes the system run faster, but it is also possible to decrease $M$ without sacrificing much quality.  One can replace the full spectrogram with a mel-spaced spectrogram with many fewer bins.  In fact, Schwarz's Caterpillar system did something very similar, suggesting alternative features to the raw spectrogram such as spectral flux \cite{schwarz2000system}.  We assess the impact of such a choice on pitch resolution in Section~\ref{sec:quantitativeevaluation}.
