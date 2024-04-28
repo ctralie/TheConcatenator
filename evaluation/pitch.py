@@ -80,7 +80,7 @@ for mel in [False, True]:
     for P in [100, 1000, 10000]:
         particle_params["P"] = P
         particle_params["neff_thresh"] = 0.1*P
-        pf = ParticleFilter(ycorpus, feature_params, particle_params, 'cuda')
+        pf = ParticleAudioProcessor(ycorpus, feature_params, particle_params, 'cuda')
         
         for f in glob.glob("../target/MDB-stem-synth/audio_stems/*.wav"):
             pf.reset_state()

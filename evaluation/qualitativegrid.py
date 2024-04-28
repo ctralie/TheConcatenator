@@ -17,6 +17,7 @@ sr = 44100
 win = 2048
 hop = win//2
 stereo = True
+couple_channels = False
 P = 1000
 p = 5
 pd = 0.95
@@ -190,8 +191,8 @@ for targets_name, targets in all_targets.items():
     for corpus in corpora:
         corpus, corpus_html = corpus["path"], corpus["html"]
         corpus_name = corpus.split("/")[-1]
-        ycorpus = load_corpus("Qualitative/Corpus/" + corpus, sr, stereo=True)
-        pf = ParticleFilter(ycorpus, feature_params, particle_params, 'cuda')
+        ycorpus = load_corpus("Qualitative/Corpus/" + corpus, sr, stereo=stereo)
+        pf = ParticleAudioProcessor(ycorpus, feature_params, particle_params, 'cuda', couple_channels)
         html += "\n\n<tr>\n    <td><h3>{}</h3></td>".format(corpus_html)
         for target in targets:
             target_name = target.split("/")[-1]

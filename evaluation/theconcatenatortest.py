@@ -27,7 +27,7 @@ def do_batch_with_params(pfiles, feature_params, particle_params):
     files = [f for (f, n) in zip(pfiles, not_finished) if n]
     outfilenames = [f for (f, n) in zip(outfilenames, not_finished) if n]
 
-    pf = ParticleFilter(ycorpus, feature_params, particle_params, 'cuda')
+    pf = ParticleAudioProcessor(ycorpus, feature_params, particle_params, 'cuda')
 
     for target, outfilename in zip(files, outfilenames):
         print(outfilename)

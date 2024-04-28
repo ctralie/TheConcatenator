@@ -22,7 +22,7 @@ import argparse
 import sys
 sys.path.append("src")
 from audioutils import load_corpus
-from particle import ParticleFilter
+from particle import ParticleAudioProcessor
 import time
 from scipy.io import wavfile
 
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('--useYin', type=int, default=0, help="If 1, use Yin features")
     parser.add_argument('--useZCS', type=int, default=0, help="If 1, use zero-crossings in each window as a feature")
     parser.add_argument('--melBands', type=int, default=40, help="Number of mel bands to use")
-    parser.add_argument('--stereo', type=int, default=1, help="If 1, use stereo.  If 0, use mono")
+    parser.add_argument('--stereo', type=int, default=1, help="0-Mono, 1-Stereo Particle Left Only (Default), 2-Stereo Particles Each Channel")
     parser.add_argument('--device', type=str, default="cpu", help="Torch device to use, or \"np\" for numpy")
     parser.add_argument("--nThreads", type=int, default=0, help="Use this number of threads in torch if specified")
     #parser.add_argument('--shiftrange', type=int, default=0, help="The number of halfsteps below and above which to shift the sound")
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     print("Loading corpus audio...")
     tic = time.time()
     ycorpus = load_corpus(opt.corpus, sr=opt.sr, 
-                          stereo=(opt.stereo==1),
+                          stereo=(opt.stereo>0),
                           shift_min=opt.shiftMin,
                           shift_max=opt.shiftMax)
     print("ycorpus.shape", ycorpus.shape)
@@ -107,7 +107,8 @@ if __name__ == '__main__':
         use_top_particle=opt.useTopParticle == 1,
         target_shift=opt.targetShift
     )
-    pf = ParticleFilter(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic")
+    couple_channels = opt.stereo < 2
+    pf = ParticleAudioProcessor(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic", couple_channels)
     if opt.target == "mic":
         while not pf.recording_started or (pf.recording_started and not pf.recording_finished):
             time.sleep(2)
@@ -115,7 +116,7 @@ if __name__ == '__main__':
         wavfile.write(opt.recorded, opt.sr, recorded)
     else:
         print("Processing frames offline with particle filter...")
-        ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo==1))
+        ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo>0))
         tic = time.time()
         pf.process_audio_offline(ytarget)
         print("Elapsed time offline particle filter: {:.3f}".format(time.time()-tic))    
@@ -123,7 +124,6 @@ if __name__ == '__main__':
     wavfile.write(opt.result, opt.sr, generated)
 
     print("\n\nMean frame time: {:.3f}ms\nUpper Bound Budget: {:.3f}ms\n".format(1000*np.mean(pf.frame_times), 500*opt.winSize/opt.sr))
-    
 
     if opt.saveplots == 1:
         import matplotlib.pyplot as plt

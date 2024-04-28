@@ -42,7 +42,6 @@ class Observer:
         self.W = W
         self.WAlpha = WAlpha
         self.device = device
-        # Normalize ahead of time
         if device == "np":
             WDenom = np.sum(W, axis=0)
         else:
