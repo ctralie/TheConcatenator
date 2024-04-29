@@ -115,7 +115,7 @@ def get_dct_basis(N, n_dct=20):
     return B
 
 class AudioFeatureComputer:
-    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_yin=False, use_zcs=False, device="cpu"):
+    def __init__(self, win=2048, sr=44100, min_freq=50, max_freq=8000, use_stft=True, mel_bands=40, use_mel=False, use_superflux=False, device="cpu"):
         """
         Parameters
         ----------
@@ -133,10 +133,8 @@ class AudioFeatureComputer:
             Number of bands to use if using mel-spaced STFT
         use_mel: bool
             If True, use mel-spaced STFT
-        use_yin: bool
-            If True, use yin features
-        use_zcs: bool
-            If True, use zero crossings
+        use_superflux: bool
+            If True, using superflux for audio novelty
         device: str
             Torch device on which to put features before returning
         """
@@ -146,8 +144,7 @@ class AudioFeatureComputer:
         self.kmax = min(int(win*max_freq/sr)+1, win//2)
         self.use_stft = use_stft
         self.use_mel = use_mel
-        self.use_yin = use_yin
-        self.use_zcs = use_zcs
+        self.use_superflux = use_superflux
         self.device = device
         
         if use_stft and use_mel:
@@ -155,9 +152,16 @@ class AudioFeatureComputer:
 
         if self.use_mel:
             self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
+
+        if self.use_superflux:
+            superflux_bins = 138
+            self.MSF = get_mel_filterbank(sr, win, superflux_bins, 27.5, 16000)
+            self.SFWin = [np.zeros(superflux_bins) for _ in range(2)]
     
-    def __call__(self, x, shift=0):
+    def get_spectral_features(self, x, shift=0):
         """
+        Compute the spectral features, which are used in KL fit
+
         Parameters
         ----------
         x: ndarray(win) or ndarray(win, n_frames)
@@ -178,12 +182,6 @@ class AudioFeatureComputer:
             components.append(S[self.kmin:self.kmax, :])
         if self.use_mel:
             components.append(self.M.dot(S))
-        if self.use_yin:
-            components.append(get_yin(x))
-        if self.use_zcs:
-            Z = np.sign(x)
-            Z = np.sum(np.abs(Z[0:-1, :]-Z[1:, :]), axis=0, keepdims=True)
-            components.append(Z)
         res = np.concatenate(tuple(components), axis=0)
         if x.shape == 0:
             res = res[:, 0]

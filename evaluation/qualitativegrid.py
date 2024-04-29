@@ -14,7 +14,7 @@ from audioutils import *
 
 ## Step 1: intialize parameters
 sr = 44100
-win = 2048
+win = 4096
 hop = win//2
 stereo = True
 couple_channels = False

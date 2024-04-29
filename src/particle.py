@@ -76,10 +76,6 @@ class ParticleFilterChannel:
                 Number of bands to use if using mel-spaced STFT
             use_mel: bool
                 If True, use mel-spaced STFT
-            use_yin: bool
-                If True, use yin features
-            use_zcs: bool
-                If True, use zero crossings
         }
         particle_params: {
             p: int
@@ -149,7 +145,7 @@ class ParticleFilterChannel:
         # Corpus is analyzed with hann window
         self.win_samples = np.array(hann_window(win), dtype=np.float32)
         print("Computing corpus features for {}...".format(name), flush=True)
-        WCorpus = self.feature_computer(self.WSound)
+        WCorpus = self.feature_computer.get_spectral_features(self.WSound)
         self.WCorpus = WCorpus
         # Shrink elements that are too small
         self.WAlpha = self.alpha*np.array(WPowers <= CORPUS_DB_CUTOFF, dtype=np.float32)
@@ -159,7 +155,7 @@ class ParticleFilterChannel:
         self.loud_enough_idx_map = np.arange(WCorpus.shape[1])[WPowers > CORPUS_DB_CUTOFF]
         print("{:.3f}% of corpus in {} is above loudness threshold".format(100*self.loud_enough_idx_map.size/WCorpus.shape[1], name))
 
-        ## Step 2: Setup zero crossing proposal
+        ## Step 2: Setup superflux proposal
         ## TODO: Finish this
         
         ## Step 3: Setup observer and propagator
@@ -346,7 +342,7 @@ class ParticleFilterChannel:
         """
         ## Step 1: 
         with self.target_shift_mutex:
-            Vt = self.feature_computer(self.win_samples*x, self.target_shift)
+            Vt = self.feature_computer.get_spectral_features(self.win_samples*x, self.target_shift)
         if self.device == "np":
             Vt = np.reshape(Vt, (Vt.size, 1))
         else:
@@ -367,21 +363,17 @@ class ParticleFilterChannel:
         ndarray(p)
             Indices of best activations
         """
-        ## Step 1: Sample proposal indices based on the observation
+        ## Step 1: Sample proposal indices based on superflux
         proposal_idxs = []
         VtNorm = 0
         if self.proposal_k > 0:
             Vtnp = Vt
             if self.device != "np":
                 Vtnp = Vt.cpu().numpy()
-            VtNorm = np.sqrt(np.sum(Vtnp**2))
-            if VtNorm > 0:
-                proposal_idxs = self.proposal_tree.query((Vtnp/VtNorm).T, self.proposal_k, return_distance=False).flatten()
-                proposal_idxs = self.loud_enough_idx_map[proposal_idxs]
-                proposal_idxs = np.array(proposal_idxs, dtype=np.int32)
-                if self.device != "np":
-                    import torch
-                    proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
+            ## TODO: Fill in superflux to choose proposal_idxs
+            if self.device != "np":
+                import torch
+                proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
         if self.proposal_k == 0 or VtNorm == 0:
             self.propagator.propagate(self.states)
         else:
@@ -504,7 +496,6 @@ class ParticleAudioProcessor:
         self.output_idx = 0 
         for c in self.channels:
             c.reset_state()
-        self.mic_channels = 1
 
     def __init__(self, ycorpus, feature_params, particle_params, device, use_mic=False, couple_channels=True):
         """
@@ -526,10 +517,6 @@ class ParticleAudioProcessor:
                 Number of bands to use if using mel-spaced STFT
             use_mel: bool
                 If True, use mel-spaced STFT
-            use_yin: bool
-                If True, use yin features
-            use_zcs: bool
-                If True, use zero crossings
         }
         particle_params: {
             p: int
