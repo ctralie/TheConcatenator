@@ -90,9 +90,9 @@ class ParticleFilterChannel:
                 Number of iterations for NMF observation probabilities
             P: int
                 Number of particles
-            proposal_k: float
-                Number of nearest neighbors to use in proposal distribution
-                (if 0, don't use proposal distribution)
+            flux_tightness: float
+                Flux cutoff above which to propose activations.  If 0, don't use
+                proposal distribution
             r: int
                 Repeated activations cutoff
             neff_thresh: float
@@ -120,7 +120,7 @@ class ParticleFilterChannel:
         self.pd = particle_params["pd"]
         self.temperature = particle_params["temperature"]
         self.L = particle_params["L"]
-        self.proposal_k = particle_params["proposal_k"]
+        self.flux_tightness = particle_params["flux_tightness"]
         self.r = particle_params["r"]
         self.neff_thresh = particle_params["neff_thresh"]
         self.alpha = particle_params["alpha"]
@@ -132,6 +132,7 @@ class ParticleFilterChannel:
         self.hop = hop
         self.wet = 1
         self.wet_mutex = Lock()
+        self.flux_mutex = Lock()
         # Store other channels whose parameters are coupled to this channel
         self.coupled_channels = [] 
 
@@ -158,8 +159,11 @@ class ParticleFilterChannel:
         print("{:.3f}% of corpus in {} is above loudness threshold".format(100*self.loud_enough_idx_map.size/WCorpus.shape[1], name))
 
         ## Step 2: Setup superflux proposal
-        ## TODO: Finish this
-        
+        self.wflux = self.feature_computer.get_superflux_corpus(self.WSound)
+        self.wflux_max = np.max(self.wflux)
+        self.wflux_idx = np.argsort(self.wflux)
+        self.wflux = self.wflux[self.wflux_idx]
+
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
         self.N = N
@@ -199,6 +203,14 @@ class ParticleFilterChannel:
         for c in self.coupled_channels:
             c.pd = float(value)
             c.propagator.update_pd(float(value))
+
+    def update_flux(self, value):
+        with self.flux_mutex:
+            self.flux_tightness = float(value)
+            self.flux_label.config(text="flux tightness {:.2f}".format(self.flux_tightness))
+            for c in self.coupled_channels:
+                with c.flux_mutex:
+                    c.flux = float(value)
 
     def setup_gui(self, f, length):
         """
@@ -241,6 +253,14 @@ class ParticleFilterChannel:
         self.pd_slider = ttk.Scale(f, from_=0.5, to=1, length=length, value=self.pd, orient="horizontal", command=self.update_pd)
         self.pd_slider.grid(column=0, row=row)
         self.update_pd(self.pd)
+        row += 1
+
+        ## flux slider
+        self.flux_label = ttk.Label(f, text="flux")
+        self.flux_label.grid(column=1, row=row)
+        self.flux_slider = ttk.Scale(f, from_=0, to=1, length=length, value=self.flux_tightness, orient="horizontal", command=self.update_flux)
+        self.flux_slider.grid(column=0, row=row)
+        self.update_flux(self.flux_tightness)
         row += 1
 
         self.reset_button = ttk.Button(f, text="Reset Particles", command=self.reset_particles)
@@ -363,7 +383,7 @@ class ParticleFilterChannel:
             Vt = Vt.view(Vt.numel(), 1)
         return Vt
 
-    def do_particle_step(self, Vt):
+    def do_particle_step(self, Vt, x):
         """
         Run the particle filter for one step given the audio
         in one full window for this channel, and figure out what
@@ -371,6 +391,8 @@ class ParticleFilterChannel:
 
         Vt: ndarray or torch (n_fft, 1)
             Spectrogram at this time
+        x: ndarray(win)
+            Audio in this window
 
         Returns
         -------
@@ -380,19 +402,23 @@ class ParticleFilterChannel:
         ## Step 1: Sample proposal indices based on superflux
         proposal_idxs = []
         VtNorm = 0
-        if self.proposal_k > 0:
-            Vtnp = Vt
-            if self.device != "np":
-                Vtnp = Vt.cpu().numpy()
-            ## TODO: Fill in superflux to choose proposal_idxs
+        if self.flux_tightness > 0:
+            ## Use superflux to select proposal indices
+            from bisect import bisect_left, bisect_right
+            flux = self.feature_computer.get_superflux_window(x)
+            fmin = flux*self.flux_tightness
+            fmax = flux/self.flux_tightness
+            i1 = bisect_left(self.wflux, fmin)
+            i2 = bisect_right(self.wflux, fmax)
+            proposal_idxs = self.wflux_idx[i1:i2]
             if self.device != "np":
                 import torch
                 proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
-        if self.proposal_k == 0 or VtNorm == 0:
+        if self.flux_tightness == 0 or VtNorm == 0:
             self.propagator.propagate(self.states)
         else:
-            # Correction factor for proposal distribution
-            self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs)
+            ## NOTE: Ignoring correction factor for now
+            self.propagator.propagate_proposal(self.states, proposal_idxs)
 
         ## Step 2: Apply the observation probability updates
         self.ws *= self.observer.observe(self.states, Vt)
@@ -545,9 +571,9 @@ class ParticleAudioProcessor:
                 Number of iterations for NMF observation probabilities
             P: int
                 Number of particles
-            proposal_k: float
-                Number of nearest neighbors to use in proposal distribution
-                (if 0, don't use proposal distribution)
+            flux_tightness: float
+                Flux cutoff above which to propose activations.  If 0, don't use
+                proposal distribution
             r: int
                 Repeated activations cutoff
             neff_thresh: float
@@ -758,7 +784,7 @@ class ParticleAudioProcessor:
             # Run each particle filter on its channel of audio
             Vt = c.get_Vt(self.buf_in[i, :])
             if i == 0 or not self.couple_channels:
-                idxs = c.do_particle_step(Vt)
+                idxs = c.do_particle_step(Vt, self.buf_in[i, :])
             y[i, :] = c.fit_activations(Vt, idxs)
         self.accumulate_next_window(y)
         # Record elapsed time
@@ -815,7 +841,7 @@ class ParticleAudioProcessor:
             plt.plot(t, active_diffs, linewidth=0.5)
             legend.append("{}: Mean {:.3f}".format(c.name, np.mean(active_diffs)))
         plt.legend(legend)
-        plt.title("Activation Changes over Time, p={}, proposal_k={}".format(p, channels_to_plot[0].proposal_k))
+        plt.title("Activation Changes over Time, p={}, flux_tightness={}".format(p, channels_to_plot[0].flux_tightness))
         plt.xlabel("Time (Seconds)")
 
         plt.subplot(233)
