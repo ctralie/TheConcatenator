@@ -161,7 +161,7 @@ class ParticleFilterChannel:
         ## Step 2: Setup superflux proposal
         self.wflux = self.feature_computer.get_superflux_corpus(self.WSound)
         self.wflux_max = np.max(self.wflux)
-        self.wflux_idx = np.argsort(self.wflux)
+        self.wflux_idx = np.array(np.argsort(self.wflux), dtype=np.int32)
         self.wflux = self.wflux[self.wflux_idx]
 
         ## Step 3: Setup observer and propagator
@@ -401,7 +401,6 @@ class ParticleFilterChannel:
         """
         ## Step 1: Sample proposal indices based on superflux
         proposal_idxs = []
-        VtNorm = 0
         if self.flux_tightness > 0:
             ## Use superflux to select proposal indices
             from bisect import bisect_left, bisect_right
@@ -411,14 +410,14 @@ class ParticleFilterChannel:
             i1 = bisect_left(self.wflux, fmin)
             i2 = bisect_right(self.wflux, fmax)
             proposal_idxs = self.wflux_idx[i1:i2]
-            if self.device != "np":
+        if len(proposal_idxs) > 0:
+            ## NOTE: Not using correction factor right now
+            if self.device == "np":
+                self.propagator.propagate_proposal_np(self.states, proposal_idxs)
+            else:
                 import torch
                 proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
-        if self.flux_tightness == 0 or VtNorm == 0:
-            self.propagator.propagate(self.states)
-        else:
-            ## NOTE: Ignoring correction factor for now
-            self.propagator.propagate_proposal(self.states, proposal_idxs)
+                self.propagator.propagate_proposal(self.states, proposal_idxs)
 
         ## Step 2: Apply the observation probability updates
         self.ws *= self.observer.observe(self.states, Vt)

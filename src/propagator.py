@@ -123,8 +123,8 @@ class Propagator:
         ## Sample from proposal indices with probability (1-pd)(v-1)/v
         new_loc[new_loc==1] = 1+np.random.randint(v, size=(np.sum(new_loc),))
         n_proposal = np.sum(new_loc > 1)
-        idxs = np.random.randint(proposal.numel(), size=(n_proposal,))
-        q[new_loc > 1] = ((v-1)/v)*(1-pd)/proposal.numel()
+        idxs = np.random.randint(proposal.size, size=(n_proposal,))
+        q[new_loc > 1] = ((v-1)/v)*(1-pd)/proposal.size
         # If we happen to jump to the next state, be sure to incorporate this probability properly
         q[new_loc > 1][states[new_loc > 1] + 1 == proposal[idxs]] += pd
         p[new_loc > 1][states[new_loc > 1] + 1 == proposal[idxs]] += pd
@@ -132,8 +132,8 @@ class Propagator:
 
         ## Sample from other indices with probability (1-pd)/v
         n_other = np.sum(new_loc == 1)
-        idxs = np.random.randint(other.numel(), size=(n_other,))
-        q[new_loc == 1] = (1/v)*(1-pd)/other.numel()
+        idxs = np.random.randint(other.size, size=(n_other,))
+        q[new_loc == 1] = (1/v)*(1-pd)/other.size
         # If we happen to jump to the next state, be sure to incorporate this probability properly
         q[new_loc == 1][states[new_loc == 1] + 1 == other[idxs]] += pd
         p[new_loc == 1][states[new_loc == 1] + 1 == other[idxs]] += pd
