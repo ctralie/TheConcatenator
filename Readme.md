@@ -5,11 +5,26 @@ This codebase has a basic python prototype of "The Concatenator," a fast, real t
 ## Installation
 
 ### Installing Basic Requirements
-Be sure to install numpy, matplotlib, scikit-learn, numba, librosa
+If you do not have python on your system, follow the instructions at <a href = "https://docs.anaconda.com/free/miniconda/">this link</a> to download and install miniconda.  Then, open up the anaconda prompt as indicated at that link, and change directories into <code>TheConcatenator</code> folder.
+
+Then, regardless of whether this is a fresh install or an old install, make sure you have the following dependencies installed: numpy, matplotlib, scikit-learn, numba, librosa
 
 ~~~~~ bash
 pip install numpy matplotlib scikit-learn numba librosa
 ~~~~~
+
+It is also highly recommended that you install cuda and torch if you have a cuda-capable Nvidia GPU.  As of the writing of this readme (4/29/2024), the commands to install the best versions of this in miniconda are the following, in sequence:
+
+~~~~~ bash
+conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
+~~~~~
+
+~~~~~ bash
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+~~~~~
+
+Beware that this will download ~10GB of data to your computer, and so it may take a moment.
+
 
 ### Installation for real time
 If you want to do real time, be sure that portaudio is installed.  On mac, for instance
