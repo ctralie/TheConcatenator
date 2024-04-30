@@ -132,6 +132,8 @@ class ParticleFilterChannel:
         self.hop = hop
         self.wet = 1
         self.wet_mutex = Lock()
+        # Store other channels whose parameters are coupled to this channel
+        self.coupled_channels = [] 
 
         ## Step 1: Compute features for corpus
         self.target_shift = 0
@@ -170,21 +172,33 @@ class ParticleFilterChannel:
     def update_wet(self, value):
         with self.wet_mutex:
             self.wet = float(value)
+            for c in self.coupled_channels:
+                with c.wet_mutex:
+                    c.wet = float(value)
     
     def update_target_shift(self, value):
         with self.target_shift_mutex:
             self.target_shift = float(value)
             self.target_shift_label.config(text="shift ({:.1f})".format(self.target_shift))
+            for c in self.coupled_channels:
+                with c.target_shift_mutex:
+                    c.target_shift = float(value)
 
     def update_temperature(self, value):
         self.temperature = float(value)
         self.temp_label.config(text="temperature ({:.1f})".format(self.temperature))
         self.observer.update_temperature(self.temperature)
+        for c in self.coupled_channels:
+            c.temperature = float(value)
+            c.observer.update_temperature(float(value))
     
     def update_pd(self, value):
         self.pd = float(value)
         self.pd_label.config(text="pd ({:.5f})".format(self.pd))
         self.propagator.update_pd(self.pd)
+        for c in self.coupled_channels:
+            c.pd = float(value)
+            c.propagator.update_pd(float(value))
 
     def setup_gui(self, f, length):
         """
@@ -564,6 +578,9 @@ class ParticleAudioProcessor:
         feature_params["device"] = device
         self.n_channels = ycorpus.shape[0]
         self.channels = [ParticleFilterChannel(ycorpus[i, :], feature_params, particle_params, device, name="channel {}".format(i)) for i in range(ycorpus.shape[0])]
+        if self.couple_channels:
+            for c in self.channels[1:]:
+                self.channels[0].coupled_channels.append(c)
         self.reset_state()
         if use_mic:
             from pyaudio import PyAudio
