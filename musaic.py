@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument("--useSTFT", type=int, default=1, help="If 1, use ordinary STFT bins")
     parser.add_argument("--useMel", type=int, default=0, help="If 1, use mel-spaced bins")
     parser.add_argument("--melBands", type=int, default=40, help="Number of mel bands to use")
-    parser.add_argument("--stereo", type=int, default=1, help="0-Mono, 1-Stereo Coupled Particle Left Only (Default), 2-Stereo Particles Each Channel")
+    parser.add_argument("--stereo", type=int, default=1, help="0-Mono, 1-Stereo Particle Left Only (Default), 2-Stereo Particles Each Channel")
     parser.add_argument("--device", type=str, default="cpu", help="Torch device to use, or \"np\" for numpy")
     parser.add_argument("--nThreads", type=int, default=0, help="Use this number of threads in torch if specified")
     parser.add_argument("--r", type=int, default=7, help="Width of the repeated activation filter")
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     parser.add_argument("--alpha", type=float, default=0.1, help="L2 penalty for shrinking quiet activations")
     parser.add_argument("--particles", type=int, default=2000, help="Number of particles in the particle filter")
     parser.add_argument("--useTopParticle", type=int, default=0, help="If true, take activations only from the top particle.  Otherwise, aggregate them")
-    parser.add_argument("--fluxTightness", type=float, default=0, help="Closeness to current flux in proposal distribution.  0 means don't use proposal distribution.  1 means only propose corpus elements with exact flux match.")
+    parser.add_argument("--proposalK", type=int, default=0, help="Number of nearest neighbors to use in proposal distribution (if 0, don't use proposal distribution)")
     parser.add_argument("--temperature", type=float, default=50, help="Target importance.  Higher values mean activations will jump around more to match the target.")
     parser.add_argument("--shiftMin", type=int, default=0, help="Lowest halfstep by which to shift corpus")
     parser.add_argument("--shiftMax", type=int, default=0, help="Highest halfstep by which to shift corpus")
@@ -95,7 +95,7 @@ if __name__ == '__main__':
         temperature=opt.temperature,
         L=opt.L,
         P=opt.particles,
-        flux_tightness=opt.fluxTightness,
+        proposal_k=opt.proposalK,
         r=opt.r,
         neff_thresh=0.1*opt.particles,
         alpha=opt.alpha,
