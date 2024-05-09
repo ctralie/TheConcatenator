@@ -292,7 +292,7 @@ def stochastic_universal_sample(ws, target_points):
         while not (p >= w[idx] and p < w[idx+1]):
             idx += 1
         counts[order[idx]] += 1
-        p + 1/target_points
+        p += 1/target_points
         if p >= 1:
             p -= 1
             idx = 0
