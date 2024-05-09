@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument("--r", type=int, default=7, help="Width of the repeated activation filter")
     parser.add_argument("--p", type=int, default=10, help="Number of simultaneous activations to use in particle filter")
     parser.add_argument("--pFinal", type=int, default=0, help="Number of simultaneous activations to use in output (by default use all of them)")
-    parser.add_argument("--pd", type=float, default=0.95, help="Probability of sticking to an activation (0 is no stick, closer to 1 is longer continuous activations)")
+    parser.add_argument("--pd", type=float, default=0.9, help="Probability of sticking to an activation (0 is no stick, closer to 1 is longer continuous activations)")
     parser.add_argument("--L", type=int, default=10, help="Number of KL iterations")
     parser.add_argument("--alpha", type=float, default=0.1, help="L2 penalty for shrinking quiet activations")
     parser.add_argument("--particles", type=int, default=2000, help="Number of particles in the particle filter")

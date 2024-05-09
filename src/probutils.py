@@ -289,11 +289,13 @@ def stochastic_universal_sample(ws, target_points):
     p = np.random.rand() # Cumulative probability index, start off random
     idx = 0
     for i in range(target_points):
-        while idx < ws.size and not (p >= w[idx] and p < w[idx+1]):
+        while not (p >= w[idx] and p < w[idx+1]):
             idx += 1
-        idx = idx % ws.size
         counts[order[idx]] += 1
-        p = (p + 1/target_points) % 1
+        p + 1/target_points
+        if p >= 1:
+            p -= 1
+            idx = 0
     ws_new = np.zeros(ws.size)
     choices = np.zeros(ws.size)
     idx = 0
