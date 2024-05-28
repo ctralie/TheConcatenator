@@ -49,8 +49,7 @@ feature_params = dict(
     max_freq=max_freq,
     use_stft=True,
     use_mel=False,
-    mel_bands=40,
-    use_zcs=False,
+    mel_bands=40
 )
 particle_params = dict(
     p=p,

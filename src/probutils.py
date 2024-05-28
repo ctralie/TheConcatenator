@@ -291,6 +291,7 @@ def stochastic_universal_sample(ws, target_points):
     for i in range(target_points):
         while not (p >= w[idx] and p < w[idx+1]):
             idx += 1
+        idx = min(idx, ws.size-1) # Safeguard
         counts[order[idx]] += 1
         p += 1/target_points
         if p >= 1:

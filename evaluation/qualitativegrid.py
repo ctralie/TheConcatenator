@@ -14,7 +14,7 @@ from audioutils import *
 
 ## Step 1: intialize parameters
 sr = 44100
-win = 4096
+win = 2048
 hop = win//2
 stereo = True
 couple_channels = False
@@ -30,7 +30,6 @@ feature_params = dict(
     use_stft=True,
     use_mel=False,
     mel_bands=40,
-    use_zcs=False,
 )
 particle_params = dict(
     p=p,
