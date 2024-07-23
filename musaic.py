@@ -51,7 +51,6 @@ if __name__ == '__main__':
     parser.add_argument("--alpha", type=float, default=0.1, help="L2 penalty for shrinking quiet activations")
     parser.add_argument("--particles", type=int, default=2000, help="Number of particles in the particle filter")
     parser.add_argument("--useTopParticle", type=int, default=0, help="If true, take activations only from the top particle.  Otherwise, aggregate them")
-    parser.add_argument("--proposalK", type=int, default=0, help="Number of nearest neighbors to use in proposal distribution (if 0, don't use proposal distribution)")
     parser.add_argument("--temperature", type=float, default=50, help="Target importance.  Higher values mean activations will jump around more to match the target.")
     parser.add_argument("--shiftMin", type=int, default=0, help="Lowest halfstep by which to shift corpus")
     parser.add_argument("--shiftMax", type=int, default=0, help="Highest halfstep by which to shift corpus")
@@ -95,7 +94,6 @@ if __name__ == '__main__':
         temperature=opt.temperature,
         L=opt.L,
         P=opt.particles,
-        proposal_k=opt.proposalK,
         r=opt.r,
         neff_thresh=0.1*opt.particles,
         alpha=opt.alpha,

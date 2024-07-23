@@ -90,9 +90,6 @@ class ParticleFilterChannel:
                 Number of iterations for NMF observation probabilities
             P: int
                 Number of particles
-            proposal_k: float
-                Number of nearest neighbors to use in proposal distribution
-                (if 0, don't use proposal distribution)
             r: int
                 Repeated activations cutoff
             neff_thresh: float
@@ -120,7 +117,6 @@ class ParticleFilterChannel:
         self.pd = particle_params["pd"]
         self.temperature = particle_params["temperature"]
         self.L = particle_params["L"]
-        self.proposal_k = particle_params["proposal_k"]
         self.r = particle_params["r"]
         self.neff_thresh = particle_params["neff_thresh"]
         self.alpha = particle_params["alpha"]
@@ -158,7 +154,9 @@ class ParticleFilterChannel:
         print("{:.3f}% of corpus in {} is above loudness threshold".format(100*self.loud_enough_idx_map.size/WCorpus.shape[1], name))
 
         ## Step 2: Setup superflux proposal
-        ## TODO: Finish this
+        self.WFlux = self.feature_computer.get_superflux_corpus(ycorpus)
+        plt.plot(self.WFlux)
+        plt.show()
         
         ## Step 3: Setup observer and propagator
         N = WCorpus.shape[1]
@@ -377,22 +375,9 @@ class ParticleFilterChannel:
         ndarray(p)
             Indices of best activations
         """
-        ## Step 1: Sample proposal indices based on superflux
-        proposal_idxs = []
-        VtNorm = 0
-        if self.proposal_k > 0:
-            Vtnp = Vt
-            if self.device != "np":
-                Vtnp = Vt.cpu().numpy()
-            ## TODO: Fill in superflux to choose proposal_idxs
-            if self.device != "np":
-                import torch
-                proposal_idxs = torch.from_numpy(proposal_idxs).to(self.device)
-        if self.proposal_k == 0 or VtNorm == 0:
-            self.propagator.propagate(self.states)
-        else:
-            # Correction factor for proposal distribution
-            self.ws *= self.propagator.propagate_proposal(self.states, proposal_idxs)
+        ## Step 1: Propagate
+        ## TODO: Restrict based on superflux
+        self.propagator.propagate(self.states)
 
         ## Step 2: Apply the observation probability updates
         self.ws *= self.observer.observe(self.states, Vt)
@@ -545,9 +530,6 @@ class ParticleAudioProcessor:
                 Number of iterations for NMF observation probabilities
             P: int
                 Number of particles
-            proposal_k: float
-                Number of nearest neighbors to use in proposal distribution
-                (if 0, don't use proposal distribution)
             r: int
                 Repeated activations cutoff
             neff_thresh: float
@@ -815,7 +797,7 @@ class ParticleAudioProcessor:
             plt.plot(t, active_diffs, linewidth=0.5)
             legend.append("{}: Mean {:.3f}".format(c.name, np.mean(active_diffs)))
         plt.legend(legend)
-        plt.title("Activation Changes over Time, p={}, proposal_k={}".format(p, channels_to_plot[0].proposal_k))
+        plt.title("Activation Changes over Time, p={}".format(p))
         plt.xlabel("Time (Seconds)")
 
         plt.subplot(233)
