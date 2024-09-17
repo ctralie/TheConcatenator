@@ -15,12 +15,6 @@ The licensor cannot revoke these freedoms as long as you follow the license term
 
 import numpy as np
 
-SUPERFLUX_BINS = 138
-SUPERFLUX_FMIN = 27.5
-SUPERFLUX_FMAX = 16000
-SUPERFLUX_GAMMA = 10
-SUPERFLUX_MAXWIN = 5
-
 def get_yin(F):
     """
     Compute the normalized yin on windowed audio
@@ -159,13 +153,6 @@ class AudioFeatureComputer:
         if self.use_mel:
             self.M = get_mel_filterbank(sr, win, mel_bands, min_freq, max_freq)
 
-        if self.use_superflux:
-            self.MSF = get_mel_filterbank(sr, win, SUPERFLUX_BINS, SUPERFLUX_FMIN, SUPERFLUX_FMAX)
-            # Holding max filtered windows two back
-            self.SFMWin = [np.zeros(SUPERFLUX_BINS) for _ in range(2)]
-        self.powers = []
-        self.power_accum = 0
-
     def get_spectral_features(self, x, shift=0):
         """
         Compute the spectral features, which are used in KL fit
@@ -198,53 +185,3 @@ class AudioFeatureComputer:
             from torch import from_numpy
             res = from_numpy(res).to(self.device)
         return res
-    
-    def get_superflux_corpus(self, x):
-        """
-        Compute superflux of a corpus, normalized by loudness
-
-        Parameters
-        ----------
-        x: ndarray(win, n_frames)
-            Pre-windowed audio frames
-        
-        Returns
-        -------
-        ndarray(n_frames)
-            Superflux estimates
-        """
-        from scipy.ndimage import maximum_filter
-        S = np.abs(np.fft.rfft(x, axis=0))
-        S = self.MSF.dot(S)
-        S = np.log10(S + SUPERFLUX_GAMMA)
-        SM = maximum_filter(S, size=(SUPERFLUX_MAXWIN, 1))
-        diff = S[:, 2:] - SM[:, 0:-2]
-        diff[diff < 0] = 0
-        flux = np.sum(diff, axis=0)
-        return flux
-    
-    def get_superflux_window(self, x):
-        """
-        Compute superflux of a corpus, normalized by loudness
-
-        Parameters
-        ----------
-        x: ndarray(win)
-            Pre-windowed audio frame
-
-        Returns
-        -------
-        float
-            Flux at this window
-        """
-        from scipy.ndimage import maximum_filter
-        s = np.abs(np.fft.rfft(x))
-        s = self.MSF.dot(s)
-        s = np.log10(s + SUPERFLUX_GAMMA)
-        sm = maximum_filter(s[:, None], size=(SUPERFLUX_MAXWIN, 1)).flatten()
-        diff = s - self.SFMWin[-2]
-        self.SFMWin.append(sm)
-        self.SFMWin.pop(0)
-        diff[diff < 0] = 0
-        flux = np.sum(diff)
-        return flux

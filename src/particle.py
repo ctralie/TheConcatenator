@@ -152,13 +152,8 @@ class ParticleFilterChannel:
             self.WAlpha = torch.from_numpy(self.WAlpha).to(self.device)
         self.loud_enough_idx_map = np.arange(WCorpus.shape[1])[WPowers > CORPUS_DB_CUTOFF]
         print("{:.3f}% of corpus in {} is above loudness threshold".format(100*self.loud_enough_idx_map.size/WCorpus.shape[1], name))
-
-        ## Step 2: Setup superflux proposal
-        self.WFlux = self.feature_computer.get_superflux_corpus(ycorpus)
-        plt.plot(self.WFlux)
-        plt.show()
         
-        ## Step 3: Setup observer and propagator
+        ## Step 2: Setup observer and propagator
         N = WCorpus.shape[1]
         self.N = N
         self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature, device)
@@ -352,7 +347,6 @@ class ParticleFilterChannel:
         ndarray or torch (n_fft, 1)
             Spectrogram
         """
-        ## Step 1: 
         with self.target_shift_mutex:
             Vt = self.feature_computer.get_spectral_features(self.win_samples*x, self.target_shift)
         if self.device == "np":
@@ -376,7 +370,6 @@ class ParticleFilterChannel:
             Indices of best activations
         """
         ## Step 1: Propagate
-        ## TODO: Restrict based on superflux
         self.propagator.propagate(self.states)
 
         ## Step 2: Apply the observation probability updates
