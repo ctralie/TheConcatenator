@@ -56,10 +56,12 @@ class ParticleFilterChannel:
         self.fit = 0 # KL fit
         self.num_resample = 0
 
-    def __init__(self, ycorpus, feature_params, particle_params, device, name="channel"):
+    def __init__(self, ycorpus, corpus_labels, feature_params, particle_params, device, name="channel"):
         """
         ycorpus: ndarray(n_samples)
             Audio samples for the corpus for this channel
+        corpus_labels: ndarray(n_samples//hop)
+            Labels of each corpus window
         feature_params: {
             win: int
                 Window length for each STFT window.  For simplicity, assume
@@ -99,8 +101,6 @@ class ParticleFilterChannel:
             use_top_particle: bool
                 If True, only take activations from the top particle at each step.
                 If False, aggregate 
-            target_shift: float
-                Number of halfsteps by which to pitch shift the target
         }
         device: string
             Device string for torch
@@ -132,10 +132,6 @@ class ParticleFilterChannel:
         self.coupled_channels = [] 
 
         ## Step 1: Compute features for corpus
-        self.target_shift = 0
-        if "target_shift" in particle_params:
-            self.target_shift = particle_params["target_shift"]
-        self.target_shift_mutex = Lock()
         feature_params["device"] = device
         self.feature_computer = AudioFeatureComputer(**feature_params)
         print("Getting corpus windows for {}...".format(name), flush=True)
@@ -157,7 +153,7 @@ class ParticleFilterChannel:
         N = WCorpus.shape[1]
         self.N = N
         self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature, device)
-        self.propagator = Propagator(N, self.pd, device)
+        self.propagator = Propagator(corpus_labels[0:WCorpus.shape[1]], self.pd, device)
         self.reset_state()
 
         print("Finished setting up particle filter for {}: Elapsed Time {:.3f} seconds".format(name, time.time()-tic))
@@ -168,14 +164,6 @@ class ParticleFilterChannel:
             for c in self.coupled_channels:
                 with c.wet_mutex:
                     c.wet = float(value)
-    
-    def update_target_shift(self, value):
-        with self.target_shift_mutex:
-            self.target_shift = float(value)
-            self.target_shift_label.config(text="shift ({:.1f})".format(self.target_shift))
-            for c in self.coupled_channels:
-                with c.target_shift_mutex:
-                    c.target_shift = float(value)
 
     def update_temperature(self, value):
         self.temperature = float(value)
@@ -210,14 +198,6 @@ class ParticleFilterChannel:
         self.wet_slider = ttk.Scale(f, from_=0, to=1, length=length, value=1, orient="horizontal", command=self.update_wet)
         self.wet_slider.grid(column=0, row=row)
         self.update_wet(self.wet)
-        row += 1
-
-        ## Pitch Shift slider
-        self.target_shift_label = ttk.Label(f, text="Pitch Shift")
-        self.target_shift_label.grid(column=1, row=row)
-        self.target_shift_slider = ttk.Scale(f, from_=-12, to=12, length=length, value=0, orient="horizontal", command=self.update_target_shift)
-        self.target_shift_slider.grid(column=0, row=row)
-        self.update_target_shift(self.target_shift)
         row += 1
 
         ## Temperature slider
@@ -347,8 +327,7 @@ class ParticleFilterChannel:
         ndarray or torch (n_fft, 1)
             Spectrogram
         """
-        with self.target_shift_mutex:
-            Vt = self.feature_computer.get_spectral_features(self.win_samples*x, self.target_shift)
+        Vt = self.feature_computer.get_spectral_features(self.win_samples*x)
         if self.device == "np":
             Vt = np.reshape(Vt, (Vt.size, 1))
         else:
@@ -489,10 +468,12 @@ class ParticleAudioProcessor:
         for c in self.channels:
             c.reset_state()
 
-    def __init__(self, ycorpus, feature_params, particle_params, device, use_mic=False, couple_channels=True):
+    def __init__(self, ycorpus, start_idxs, feature_params, particle_params, device, use_mic=False, couple_channels=True):
         """
         ycorpus: ndarray(n_channels, n_samples)
             Audio samples for the corpus, possibly multi-channel
+        start_idxs: list of n+1 ints
+            Interval boundaries of each of n files in units of hop
         feature_params: {
             win: int
                 Window length for each STFT window.  For simplicity, assume
@@ -532,8 +513,6 @@ class ParticleAudioProcessor:
             use_top_particle: bool
                 If True, only take activations from the top particle at each step.
                 If False, aggregate 
-            target_shift: float
-                Number of halfsteps by which to pitch shift the target
         }
         device: string
             Device string for torch
@@ -552,7 +531,13 @@ class ParticleAudioProcessor:
         self.hop = self.win//2
         feature_params["device"] = device
         self.n_channels = ycorpus.shape[0]
-        self.channels = [ParticleFilterChannel(ycorpus[i, :], feature_params, particle_params, device, name="channel {}".format(i)) for i in range(ycorpus.shape[0])]
+        ## Compute an indicator vector of which file each corpus element is in
+        N = ycorpus.shape[1] // self.hop
+        corpus_labels = np.zeros(N, dtype=int)
+        for i in range(len(start_idxs)-1):
+            corpus_labels[start_idxs[i]:start_idxs[i+1]] = i
+        self.corpus_labels = corpus_labels
+        self.channels = [ParticleFilterChannel(ycorpus[i, :], corpus_labels, feature_params, particle_params, device, name="channel {}".format(i)) for i in range(ycorpus.shape[0])]
         if self.couple_channels:
             for c in self.channels[1:]:
                 self.channels[0].coupled_channels.append(c)
