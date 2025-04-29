@@ -37,12 +37,19 @@ class ParticleFilterChannel:
         Randomly reset particles, each with the same weight 1/P
         """
         self.ws = np.array(np.ones(self.P)/self.P, dtype=np.float32) # Particle weights
+        self.forward = np.ones((self.P, self.p))
+        if self.pr == 1:
+            self.forward[:] = 0
+        elif self.pr > 0:
+            self.forward = np.random.rand(self.P, self.p) > self.pr
+        self.forward = np.array(self.forward, dtype=np.int32)
         if self.device == "np":
             self.states = np.random.randint(self.N, size=(self.P, self.p))
         else:
             import torch
             self.ws = torch.from_numpy(self.ws).to(self.device) 
             self.states = torch.randint(self.N, size=(self.P, self.p), dtype=torch.int32).to(self.device) # Particles
+            self.forward = torch.from_numpy(self.forward).to(self.device)
 
     def reset_state(self):
         self.neff = [] # Number of effective particles over time
@@ -50,6 +57,7 @@ class ParticleFilterChannel:
         self.ws = [] # Weights over time
         self.topcounts = [] 
         self.chosen_idxs = [] # Keep track of chosen indices
+        self.chosen_forward = [] # Keep track of whether forward or reverse
         self.H = [] # Activations of chosen indices
         self.reset_particles()
         self.all_ws = []
@@ -86,6 +94,8 @@ class ParticleFilterChannel:
                 Sparsity parameter for final activations
             pd: float
                 State transition probability
+            pr: float
+                Probability that an activation will be reversed
             temperature: float
                 Amount to focus on matching observations
             L: int
@@ -100,7 +110,7 @@ class ParticleFilterChannel:
                 L2 penalty for weights
             use_top_particle: bool
                 If True, only take activations from the top particle at each step.
-                If False, aggregate 
+                If False, aggregate,
         }
         device: string
             Device string for torch
@@ -115,6 +125,7 @@ class ParticleFilterChannel:
         self.P = particle_params["P"]
         self.pfinal = particle_params["pfinal"]
         self.pd = particle_params["pd"]
+        self.pr = particle_params["pr"]
         self.temperature = particle_params["temperature"]
         self.L = particle_params["L"]
         self.r = particle_params["r"]
@@ -153,7 +164,7 @@ class ParticleFilterChannel:
         N = WCorpus.shape[1]
         self.N = N
         self.observer = Observer(self.p, WCorpus, self.WAlpha, self.L, self.temperature, device)
-        self.propagator = Propagator(corpus_labels[0:WCorpus.shape[1]], self.pd, device)
+        self.propagator = Propagator(corpus_labels[0:WCorpus.shape[1]], self.pd, self.pr, device)
         self.reset_state()
 
         print("Finished setting up particle filter for {}: Elapsed Time {:.3f} seconds".format(name, time.time()-tic))
@@ -246,7 +257,7 @@ class ParticleFilterChannel:
         if not sparse:
             H = H.toarray()
         return H
-    
+
     def aggregate_top_activations(self, diag_fac=10, diag_len=10):
         """
         Aggregate activations from the top weight 0.1*self.P particles together
@@ -259,6 +270,13 @@ class ParticleFilterChannel:
             activations chosen in the last steps
         diag_len: int
             Number of steps to look back for diagonal promotion
+
+        Returns
+        -------
+        idxs: ndarray(pfinal, dtype=int)
+            Indices of final activations
+        forward: ndarray(pfinal, dtype=int)
+            An array indicating if grains are going forward(1) or backward(0)
         """
         ## Step 1: Aggregate max particles
         PTop = int(self.neff_thresh)
@@ -268,50 +286,70 @@ class ParticleFilterChannel:
             ws = ws.cpu().numpy()
         idxs = np.argpartition(-ws, PTop)[0:PTop]
         states = self.states[idxs, :]
+        forward = self.forward[idxs, :]
         if self.device != "np":
             states = states.cpu().numpy()
+            forward = forward.cpu().numpy()
         ws = ws[idxs]
         probs = {}
-        for w, state in zip(ws, states):
-            for idx in state:
-                if not idx in probs:
-                    probs[idx] = w
+        for wi, statesi, forwardi in zip(ws, states, forward):
+            for idx, f in zip(statesi, forwardi):
+                if not (idx, f) in probs:
+                    probs[(idx, f)] = wi
                 else:
-                    probs[idx] += w
+                    probs[(idx, f)] += wi
         
         ## Step 2: Promote states that follow the last state that was chosen
         promoted_idxs = set([])
         for dc in range(1, min(diag_len, len(self.chosen_idxs))+1):
-            last_state = self.chosen_idxs[-dc]+dc
-            last_state = last_state[last_state < N]
-            for idx in last_state:
-                if not idx in promoted_idxs:
-                    if idx in probs:
-                        probs[idx] *= diag_fac
-                    promoted_idxs.add(idx)
-
+            last_state = np.array(self.chosen_idxs[-dc])
+            last_forward = np.array(self.chosen_forward[-dc])
+            last_state[last_forward == 1] += dc
+            last_state[last_forward == 0] -= dc
+            last_forward = last_forward[(last_state < N)*(last_state >= 0)]
+            last_state = last_state[(last_state < N)*(last_state >= 0)]
+            for idx, f in zip(last_state, last_forward):
+                if not (idx, f) in promoted_idxs:
+                    if (idx, f) in probs:
+                        probs[(idx, f)] *= diag_fac
+                    promoted_idxs.add((idx, f))
+        
         ## Step 3: Zero out activations that happened over the last
         # r steps prevent repeated activations
         for dc in range(1, min(self.r, len(self.chosen_idxs))+1):
-            for idx in self.chosen_idxs[-dc]:
-                if idx in probs:
-                    probs.pop(idx)
+            for idx, f in zip(self.chosen_idxs[-dc], self.chosen_forward[-dc]):
+                if (idx, f) in probs:
+                    probs.pop((idx, f))
         
         ## Step 4: Choose top corpus activations
-        idxs = np.array(list(probs.keys()), dtype=int)
-        res = idxs
-        if res.size <= self.pfinal:
-            if res.size == 0:
-                # If for some strange reason all the weights were 0
-                res = np.random.randint(N, size=(self.pfinal,))
+        items = list(probs.items())
+        idxs = np.array([k[0][0] for k in items], dtype=int)
+        forward = np.array([k[0][1] for k in items], dtype=int)
+        if idxs.size <= self.pfinal:
+            print("RARE")
+            # In some rare cases, we don't have enough activations to choose from
+            # so we have to duplicate some of them
+            if idxs.size == 0:
+                # In the incredibly rare case that all the weights were 0
+                # simply choose random windows with zero shifts
+                idxs = np.random.randint(N, size=(self.pfinal,))
+                forward = np.zeros(self.pfinal)
+                if self.pr == 1:
+                    forward[:] = 0
+                elif self.pr > 0:
+                    forward = np.random.rand(self.pfinal) > self.pr
+                forward = np.array(forward, dtype=np.int32)
             else:
-                while res.size < self.pfinal:
-                    res = np.concatenate((res, res))[0:self.pfinal]
+                while idxs.size < self.pfinal:
+                    idxs = np.concatenate((idxs, idxs))[0:self.pfinal]
+                    forward = np.concatenate((forward, forward))[0:self.pfinal]
         else:
             # Common case: Choose top pfinal corpus positions by weight
-            vals = np.array(list(probs.values()))
-            res = idxs[np.argpartition(-vals, self.pfinal)[0:self.pfinal]]
-        return res
+            vals = np.array([k[1] for k in items])
+            top_idxs = np.argpartition(-vals, self.pfinal)[0:self.pfinal]
+            idxs = idxs[top_idxs]
+            forward = forward[top_idxs]
+        return idxs, forward
     
     def get_Vt(self, x):
         """
@@ -347,9 +385,11 @@ class ParticleFilterChannel:
         -------
         ndarray(p)
             Indices of best activations
+        ndarray(p)
+            Indicator of whether an activation is going forward(1) or backward(0)
         """
         ## Step 1: Propagate
-        self.propagator.propagate(self.states)
+        self.propagator.propagate(self.states, self.forward)
 
         ## Step 2: Apply the observation probability updates
         self.ws *= self.observer.observe(self.states, Vt)
@@ -362,10 +402,13 @@ class ParticleFilterChannel:
             import torch
             self.wsmax.append(torch.max(self.ws).item())
         if self.use_top_particle:
-            top_idxs = self.states[torch.argmax(self.ws), :]
+            mx = torch.argmax(self.ws)
+            top_idxs = self.states[mx, :]
+            top_forward = self.forward[mx, :]
         else:
-            top_idxs = self.aggregate_top_activations()
+            top_idxs, top_forward = self.aggregate_top_activations()
         self.chosen_idxs.append(top_idxs)
+        self.chosen_forward.append(top_forward)
         
         ## Step 4: Resample particles if effective number is too low
         if self.device == "np":
@@ -386,15 +429,16 @@ class ParticleFilterChannel:
                 import torch
                 choices = torch.from_numpy(choices).to(self.device)
             self.states = self.states[choices, :]
+            self.forward = self.forward[choices, :]
             if self.device == "np":
                 self.ws = np.ones(self.ws.shape)/self.ws.size
             else:
                 import torch
                 self.ws = torch.ones(self.ws.shape).to(self.ws)/self.ws.numel()
 
-        return top_idxs
+        return top_idxs, top_forward
     
-    def fit_activations(self, Vt, idxs):
+    def fit_activations(self, Vt, idxs, forward):
         """
         Fit activations and mix audio
 
@@ -404,6 +448,8 @@ class ParticleFilterChannel:
             Spectrogram at this time
         idxs: ndarray(p, dtype=int)
             Indices of activations to use
+        forward: ndarray(p, dtype=int)
+            Whether grains are going forward or backward
         
         Returns
         -------
@@ -421,7 +467,11 @@ class ParticleFilterChannel:
         self.H.append(hnp)
 
         ## Step 2: Mix sound for this window
-        y = self.WSound[:, idxs].dot(hnp)
+        y = np.zeros(self.WSound.shape[0])
+        if np.sum(forward == 1) > 0:
+            y += self.WSound[:, idxs[forward == 1]].dot(hnp[forward == 1])
+        if np.sum(forward == 0) > 0:
+            y += (np.flipud(self.WSound[:, idxs[forward == 0]])).dot(hnp[forward == 0])
 
         ## Step 3: Accumulate KL term for fit
         if self.device == "np":
@@ -498,6 +548,8 @@ class ParticleAudioProcessor:
                 Sparsity parameter for final activations
             pd: float
                 State transition probability
+            pr: float
+                Probability that an activation will be reversed
             temperature: float
                 Amount to focus on matching observations
             L: int
@@ -718,8 +770,8 @@ class ParticleAudioProcessor:
             # Run each particle filter on its channel of audio
             Vt = c.get_Vt(self.buf_in[i, :])
             if i == 0 or not self.couple_channels:
-                idxs = c.do_particle_step(Vt)
-            y[i, :] = c.fit_activations(Vt, idxs)
+                idxs, forward = c.do_particle_step(Vt)
+            y[i, :] = c.fit_activations(Vt, idxs, forward)
         self.accumulate_next_window(y)
         # Record elapsed time
         elapsed = time.time()-tic

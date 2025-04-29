@@ -16,7 +16,7 @@ The licensor cannot revoke these freedoms as long as you follow the license term
 import numpy as np
 
 class Propagator:
-    def __init__(self, corpus_labels, pd, device):
+    def __init__(self, corpus_labels, pd, pr, device):
         """
         Constructor for a class that computes transition probabilities
 
@@ -26,6 +26,10 @@ class Propagator:
             File label of each corpus element
         pd: float
             Probability of remaining in the same column in time order
+        pr: float
+            Probability that an activation will be reversed
+        device: str
+            Device on which to do the computation
         """
         self.N = len(corpus_labels)
         corpus_labels = np.concatenate((corpus_labels, -np.ones(2))) # Dummy to deal with boundaries 
@@ -34,6 +38,7 @@ class Propagator:
             corpus_labels = torch.from_numpy(corpus_labels).to(device)
         self.corpus_labels = corpus_labels
         self.pd = pd
+        self.pr = pr
         self.device = device
 
     def update_pd(self, pd):
@@ -47,7 +52,7 @@ class Propagator:
         """
         return self.pd/(1-self.pd)
 
-    def propagate(self, states):
+    def propagate(self, states, forward):
         """
         Advance each particle forward randomly based on the transition model
         NOTE: For ease of implementation, the probability of remaining fixed
@@ -57,6 +62,9 @@ class Propagator:
         ----------
         states: torch.tensor(P, p, dtype=int32)
             Column choices in W corresponding to each particle.
+            This is updated by reference
+        forward: torch.tensor(P, p, dtype=int32)
+            Indicator as to whether each grain is moving forward(1) or in reverse(0)
             This is updated by reference
         """
         pd = None
@@ -68,13 +76,22 @@ class Propagator:
         else:
             import torch
             randPD = torch.rand(states.shape).to(self.device)
-        move_forward = (states < N-1)*(randPD < pd)*(labels[states+1] == labels[states])
-        states[move_forward == 1] += 1
-        new_loc = ~move_forward
+        # Deal with all activations moving forward
+        keep_moving_forward = forward*(states < N-1)*(randPD < pd)*(labels[states+1] == labels[states])
+        states[keep_moving_forward == 1] += 1
+        # Deal with all activations moving in reverse
+        keep_moving_backward = (forward==0)*(states > 0)*(randPD < pd)*(labels[states-1] == labels[states])
+        states[keep_moving_backward == 1] -= 1
+        # Determine all states that need to be resampled and perform the resampling
+        new_loc = (keep_moving_forward == 0)*(keep_moving_backward == 0)
         if self.device == "np":
             n_new = np.sum(new_loc)
             states[new_loc == 1] = np.random.randint(N, size=(n_new,))
+            if self.pr > 0 and self.pr < 1:
+                forward[new_loc == 1] = np.random.rand(n_new) > self.pr
         else:
             import torch
             n_new = torch.sum(new_loc)
             states[new_loc == 1] = torch.randint(N, size=(n_new,), dtype=torch.int32).to(self.device)
+            if self.pr > 0 and self.pr < 1:
+                forward[new_loc == 1] = (torch.rand(n_new) > self.pr).int().to(self.device)
