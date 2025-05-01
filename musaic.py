@@ -52,9 +52,6 @@ if __name__ == '__main__':
     parser.add_argument("--particles", type=int, default=2000, help="Number of particles in the particle filter")
     parser.add_argument("--useTopParticle", type=int, default=0, help="If true, take activations only from the top particle.  Otherwise, aggregate them")
     parser.add_argument("--temperature", type=float, default=50, help="Target importance.  Higher values mean activations will jump around more to match the target.")
-    parser.add_argument("--shiftMin", type=int, default=0, help="Lowest halfstep by which to shift corpus")
-    parser.add_argument("--shiftMax", type=int, default=0, help="Highest halfstep by which to shift corpus")
-    parser.add_argument("--targetShift", type=float, default=0, help="Number of halfsteps by which to pitch shift the target")
     parser.add_argument("--saveplots", type=int, default=1, help="Save plots of iterations to disk")
     opt = parser.parse_args()
 
@@ -70,10 +67,9 @@ if __name__ == '__main__':
 
     print("Loading corpus audio...")
     tic = time.time()
-    ycorpus = load_corpus(opt.corpus, sr=opt.sr, 
-                          stereo=(opt.stereo>0),
-                          shift_min=opt.shiftMin,
-                          shift_max=opt.shiftMax)
+    hop = opt.winSize//2
+    (ycorpus, _, start_idxs) = load_corpus(opt.corpus, sr=opt.sr, 
+                          stereo=(opt.stereo>0), hop=hop)
     print("ycorpus.shape", ycorpus.shape)
     print("Corpus is {:.2f} seconds long".format(ycorpus.shape[1]/opt.sr))
     print("Finished loading up corpus audio: Elapsed Time {:.3f} seconds".format(time.time()-tic))
@@ -97,11 +93,10 @@ if __name__ == '__main__':
         r=opt.r,
         neff_thresh=0.1*opt.particles,
         alpha=opt.alpha,
-        use_top_particle=opt.useTopParticle == 1,
-        target_shift=opt.targetShift
+        use_top_particle=opt.useTopParticle == 1
     )
     couple_channels = opt.stereo < 2
-    pf = ParticleAudioProcessor(ycorpus, feature_params, particle_params, opt.device, opt.target=="mic", couple_channels)
+    pf = ParticleAudioProcessor(ycorpus, start_idxs, feature_params, particle_params, opt.device, opt.target=="mic", couple_channels)
     if opt.target == "mic":
         while not pf.recording_started or (pf.recording_started and not pf.recording_finished):
             time.sleep(2)
@@ -109,7 +104,7 @@ if __name__ == '__main__':
         wavfile.write(opt.recorded, opt.sr, recorded)
     else:
         print("Processing frames offline with particle filter...")
-        ytarget = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo>0))
+        (ytarget, _) = load_corpus(opt.target, sr=opt.sr, stereo=(opt.stereo>0))
         tic = time.time()
         pf.process_audio_offline(ytarget)
         print("Elapsed time offline particle filter: {:.3f}".format(time.time()-tic))    

@@ -14,24 +14,27 @@ The licensor cannot revoke these freedoms as long as you follow the license term
 """
 
 import numpy as np
-from threading import Lock
 
 class Propagator:
-    def __init__(self, N, pd, device):
+    def __init__(self, corpus_labels, pd, device):
         """
         Constructor for a class that computes transition probabilities
 
         Parameters
         ----------
-        N: int
-            Number of corpus states
+        corpus_labels: ndarray(N, dtype=int)
+            File label of each corpus element
         pd: float
             Probability of remaining in the same column in time order
         """
-        self.N = N
+        self.N = len(corpus_labels)
+        corpus_labels = np.concatenate((corpus_labels, -np.ones(2))) # Dummy to deal with boundaries 
+        if device != "np":
+            import torch
+            corpus_labels = torch.from_numpy(corpus_labels).to(device)
+        self.corpus_labels = corpus_labels
         self.pd = pd
         self.device = device
-        self.pd_mutex = Lock()
 
     def update_pd(self, pd):
         with self.pd_mutex:
@@ -42,10 +45,7 @@ class Propagator:
         Compute the average activation length according to the negative binomial 
         distribution
         """
-        ret = 1
-        with self.pd_mutex:
-            ret = self.pd/(1-self.pd)
-        return ret
+        return self.pd/(1-self.pd)
 
     def propagate(self, states):
         """
@@ -60,15 +60,15 @@ class Propagator:
             This is updated by reference
         """
         pd = None
-        with self.pd_mutex:
-            pd = self.pd
+        pd = self.pd
         N = self.N
+        labels = self.corpus_labels
         if self.device == "np":
             randPD = np.random.rand(*states.shape)
         else:
             import torch
             randPD = torch.rand(states.shape).to(self.device)
-        move_forward = (states < N-1)*(randPD < pd)
+        move_forward = (states < N-1)*(randPD < pd)*(labels[states+1] == labels[states])
         states[move_forward == 1] += 1
         new_loc = ~move_forward
         if self.device == "np":
