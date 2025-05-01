@@ -113,14 +113,23 @@ class ParticleFilterChannel:
         sr = feature_params["sr"]
         self.p = particle_params["p"]
         self.P = particle_params["P"]
-        self.pfinal = particle_params["pfinal"]
+        if "pfinal" in particle_params:
+            self.pfinal = particle_params["pfinal"]
+        else:
+            self.pfinal = self.p
         self.pd = particle_params["pd"]
         self.temperature = particle_params["temperature"]
         self.L = particle_params["L"]
         self.r = particle_params["r"]
-        self.neff_thresh = particle_params["neff_thresh"]
+        if "neff_thresh" in particle_params:
+            self.neff_thresh = particle_params["neff_thresh"]
+        else:
+            self.neff_thresh = int(0.1*self.P)
         self.alpha = particle_params["alpha"]
-        self.use_top_particle = particle_params["use_top_particle"]
+        if "use_top_particle" in particle_params:
+            self.use_top_particle = particle_params["use_top_particle"]
+        else:
+            self.use_top_particle = False
         self.device = device
         self.win = win
         self.sr = sr
